@@ -17,6 +17,10 @@
 MYSQL_ADD_PLUGIN(ftexample ./example/plugin_example.c
                 MODULE_ONLY MODULE_OUTPUT_NAME "mypluglib")
 
+MYSQL_ADD_PLUGIN(thaift_parser ./thaift_parser/plugin_thaift.cc
+                MODULE_ONLY MODULE_OUTPUT_NAME "libpluginthaift")
+TARGET_LINK_LIBRARIES(thaift_parser "thai")
+                
 # Ngram parser
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/storage/innobase/include
                     ${CMAKE_SOURCE_DIR}/include)
