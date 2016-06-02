@@ -149,7 +149,7 @@ static int thai_parser_deinit(MYSQL_FTPARSER_PARAM *param
     the list of search terms when parsing a search string.
 */
 
-static void add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
+static int add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
 {
   MYSQL_FTPARSER_BOOLEAN_INFO bool_info=
     { FT_TOKEN_WORD,   /* enum_ft_token_type */
@@ -161,7 +161,7 @@ static void add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
       ' ', /*prev*/
       0 /*quot*/};
 
-  param->mysql_add_word(param,  const_cast<char*>(word), len, &bool_info);
+  return param->mysql_add_word(param,  const_cast<char*>(word), len, &bool_info);
 }
 
 /*
@@ -178,70 +178,63 @@ static void add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
     and passes every word to the MySQL full-text indexing engine.
 */
 
-static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
+static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str, int length, MYSQL_FTPARSER_BOOLEAN_INFO *bool_info)
 {
-  int numBytePerChar, numCut, numChar;
+  int ret, i, numBytePerChar, numCut;
   int *pos;
-  int i;
   uchar *toStr;
   uint *error;
  
   toStr= (uchar *) malloc(sizeof(uchar) * param->length * my_charset_tis620_thai_ci.mbmaxlen);
   error= (uint *) malloc(sizeof(uint) * param->length);
   numBytePerChar= param->cs->mbmaxlen;
+  ret= 0;
 
   /* convert to tis620, make it compatible with libthai */
-  numChar= my_convert((char *)toStr, param->length,&my_charset_tis620_thai_ci, 
-                      param->doc, param->length, param->cs,error);
-  
-
-  /* find words boundary */ 
-  pos = (int *)malloc(sizeof(int) * param->length);
-  numCut = th_brk (toStr, pos, param->length);
-  /* seem like numCut = sizeof(pos) - 1 ? */
-  
-  /* split word, add to index */
-  /*
-    only support natural language search for now, but multiple 
-    search terms are acceptable, no space in between though
-  */
-  for(i = 0; i <= numCut; i++) {
-    if (i == 0) {
-      add_word(param, param->doc, pos[i] * numBytePerChar);  
-    } else {
-      add_word(param, param->doc + (pos[i - 1] * numBytePerChar),
-               (pos[i] - pos[i - 1]) * numBytePerChar);  
+  my_convert((char *)toStr, length, &my_charset_tis620_thai_ci, 
+             str, length, param->cs,error);
+ 
+  /* Check if this is an english word, if so, add to index directly*/ 
+  if(isalpha(toStr[0])) {
+    ret += add_word(param, str, length);  
+  } else {
+    /* This is Thai word/pharse */
+    /* find words boundary */ 
+    pos = (int *)malloc(sizeof(int) * length);
+    /* seem like numCut = sizeof(pos) - 1 ? */
+    numCut = th_brk (toStr, pos, length);
+    
+    /* split word, add to index */
+    for(i = 0; i <= numCut; i++) {
+      if (i == 0) { /* first word */
+        ret += add_word(param, str, pos[i] * numBytePerChar);  
+      } else {
+        ret += add_word(param, str + (pos[i - 1] * numBytePerChar),
+                (pos[i] - pos[i - 1]) * numBytePerChar);  
+      }
     }
+    free(pos);
   }
   
-  free(pos);
   free(toStr);
   free(error);
-  return(0);
+  return(ret); 
 }
 
-static int simple_parser_parse(MYSQL_FTPARSER_PARAM *param)
+static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
 {
-  const char *end, *start, *docend= param->doc + param->length;
-
-  for (end= start= param->doc;; end++)
-  {
-    if (end == docend)
-    {
-      if (end > start)
-        add_word(param, start, end - start);
-      break;
-    }
-    else if (isspace(*end))
-    {
-      if (end > start)
-        add_word(param, start, end - start);
-      start= end + 1;
-    }
-  }
-  return(0);
+  FT_WORD word = {NULL, 0, 0};
+  int ret = 0;
+  uchar **start= reinterpret_cast<uchar**>(&param->doc);
+  uchar *end= *start + param->length;
+  MYSQL_FTPARSER_BOOLEAN_INFO	bool_info =
+  { FT_TOKEN_WORD, 0, 0, 0, 0, 0, ' ', 0};
+  /* split string into token, we need this to detect Thai/English */
+  while (fts_get_word(param->cs, start, end, &word, &bool_info)) {
+    ret= ret+ thai_parse(param, (char *) word.pos, word.len, &bool_info);
+  } 
+  return ret;
 }
-
 
 /*
   Plugin type-specific descriptor
