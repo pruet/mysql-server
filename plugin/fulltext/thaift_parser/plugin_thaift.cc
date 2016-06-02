@@ -152,7 +152,14 @@ static int thai_parser_deinit(MYSQL_FTPARSER_PARAM *param
 static void add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
 {
   MYSQL_FTPARSER_BOOLEAN_INFO bool_info=
-    { FT_TOKEN_WORD, 0, 0, 0, 0, (word - param->doc), ' ', 0 };
+    { FT_TOKEN_WORD,   /* enum_ft_token_type */
+      0, /*yesno*/
+      0, /*weight_adjust*/
+      0, /*wasign*/
+      0, /*trunc*/
+      (word - param->doc), /*position*/
+      ' ', /*prev*/
+      0 /*quot*/};
 
   param->mysql_add_word(param,  const_cast<char*>(word), len, &bool_info);
 }
@@ -191,8 +198,13 @@ static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
   /* find words boundary */ 
   pos = (int *)malloc(sizeof(int) * param->length);
   numCut = th_brk (toStr, pos, param->length);
+  /* seem like numCut = sizeof(pos) - 1 ? */
   
   /* split word, add to index */
+  /*
+    only support natural language search for now, but multiple 
+    search terms are acceptable, no space in between though
+  */
   for(i = 0; i <= numCut; i++) {
     if (i == 0) {
       add_word(param, param->doc, pos[i] * numBytePerChar);  
