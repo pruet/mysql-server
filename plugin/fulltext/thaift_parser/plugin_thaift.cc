@@ -195,7 +195,9 @@ static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str, int length, 
              str, length, param->cs,error);
  
   /* Check if this is an english word, if so, add to index directly*/ 
-  if(isalpha(toStr[0])) {
+  /* TODO: any better idea than this? */
+  //if(isalnum(toStr[0])) {
+  if(toStr[0] < 161) {
     ret += add_word(param, str, length);  
   } else {
     /* This is Thai word/pharse */
@@ -231,7 +233,9 @@ static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
   { FT_TOKEN_WORD, 0, 0, 0, 0, 0, ' ', 0};
   /* split string into token, we need this to detect Thai/English */
   while (fts_get_word(param->cs, start, end, &word, &bool_info)) {
-    ret= ret+ thai_parse(param, (char *) word.pos, word.len, &bool_info);
+    //if (bool_info.type == FT_TOKEN_WORD) {
+      ret= ret+ thai_parse(param, (char *) word.pos, word.len, &bool_info);
+    //}
   } 
   return ret;
 }
