@@ -100,6 +100,7 @@ fts_get_word(
 			if (*doc == FTB_RQUOT && info->quot) {
 				*start = doc + 1;
 				info->type = FT_TOKEN_RIGHT_PAREN;
+				info->quot = (char*)0;
 
 				return(info->type);
 			}

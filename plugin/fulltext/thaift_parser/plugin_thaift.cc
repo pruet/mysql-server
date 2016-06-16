@@ -1,4 +1,5 @@
 /* Copyright (c) 2005, 2011, Oracle and/or its affiliates
+   Copyright (c) 2016 Pruet Boonma <pruet@eng.cmu.ac.th>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,10 +15,6 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
 
 #include "my_config.h"
-//#include <stdlib.h>
-//#include <ctype.h>
-//#include <mysql/plugin_ftparser.h>
-//#include <m_ctype.h>
 #include <fts0tokenize.h>
 #include <thai/thbrk.h>
 #include <thai/thwchar.h>
@@ -35,20 +32,9 @@
   - Whitespace characters are space, tab, CR, LF.
   - There is no minimum word length.  Non-whitespace sequences of one
     character or longer are words.
-  - Stopwords are used in non-boolean mode, not used in boolean mode.
-*/
+  - Support both natural and boolean search.
 
-/*
-  thai_parser interface functions:
-
-  Plugin declaration functions:
-  - thai_parser_plugin_init()
-  - thai_parser_plugin_deinit()
-
-  Parser descriptor functions:
-  - thai_parser_parse()
-  - thai_parser_init()
-  - thai_parser_deinit()
+  Test cases provided by Vee Satayamas <vsatayamas@gmail.com>
 */
 
 
@@ -141,6 +127,7 @@ static int thai_parser_deinit(MYSQL_FTPARSER_PARAM *param
       param              parsing context of the plugin
       word               a word
       len                word length
+      bool_info          word's attributes
 
   DESCRIPTION
     Fill in boolean metadata for the word (if parsing in boolean mode)
@@ -149,19 +136,85 @@ static int thai_parser_deinit(MYSQL_FTPARSER_PARAM *param
     the list of search terms when parsing a search string.
 */
 
-static int add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
+static int add_word(MYSQL_FTPARSER_PARAM *param, const char *word,
+                    size_t len, MYSQL_FTPARSER_BOOLEAN_INFO *bool_info)
 {
-  MYSQL_FTPARSER_BOOLEAN_INFO bool_info=
-    { FT_TOKEN_WORD,   /* enum_ft_token_type */
-      0, /*yesno*/
-      0, /*weight_adjust*/
-      0, /*wasign*/
-      0, /*trunc*/
-      (word - param->doc), /*position*/
-      ' ', /*prev*/
-      0 /*quot*/};
+  return param->mysql_add_word(param,  const_cast<char*>(word),
+                               len, bool_info);
+}
 
-  return param->mysql_add_word(param,  const_cast<char*>(word), len, &bool_info);
+/*
+  Parse a character chunk (i.e., string surrounded by whitespaces).
+  If the chunk is in English, it will be a single word. If it is in
+  Thai, it may contains multiple words.
+
+  SYNOPSIS
+    thai_parser_parse()
+      param              parsing context
+      str                a chunk
+
+
+  DESCRIPTION
+    This function process a single word before sending to the
+    index engine. It will convert the character set of the word
+    to TIS620. This step is required by libthai's wordbreak
+    function. Then it will check whether the word is in English
+    or Thai. If former, the word will be sent to indexing engine.
+    For Thai, it will need to be broken into words, before 
+    being sent to the indexing engine.
+*/
+
+static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str,
+                      int length, MYSQL_FTPARSER_BOOLEAN_INFO *bool_info)
+{
+  int i, numBytePerChar, numCut;
+  int *pos;
+  uchar *toStr;
+  uint *error;
+ 
+  toStr= (uchar *) malloc(sizeof(uchar)
+        * param->length
+        * my_charset_tis620_thai_ci.mbmaxlen);
+  if (NULL == toStr) return 1;
+  error= (uint *) malloc(sizeof(uint) * param->length);
+  if (NULL == error) return 1;
+  numBytePerChar= param->cs->mbmaxlen;
+
+  /* convert to tis620, make it compatible with libthai */
+  my_convert((char *)toStr, length, &my_charset_tis620_thai_ci, 
+             str, length, param->cs,error);
+ 
+  /*
+    Check if this is an english word, if so, add to
+    index directly
+  */ 
+  /* TODO: any better idea than this? */
+  if(toStr[0] < 161) {
+    add_word(param, str, length, bool_info);  
+  } else {
+    /* This is Thai word/pharse */
+    /* find words boundary */ 
+    pos= (int *)malloc(sizeof(int) * length);
+    /* seem like numCut = sizeof(pos) - 1 ? */
+    numCut= th_brk (toStr, pos, length);
+    
+    /* split word, add to index */
+    for(i= 0; i <= numCut; i++) {
+      if (0 == i) { /* first word */
+        add_word(param, str, pos[i] * numBytePerChar, bool_info);  
+      } else {
+        add_word(param,
+                 str + (pos[i - 1] * numBytePerChar),
+                 (pos[i] - pos[i - 1]) * numBytePerChar,
+                 bool_info);  
+      }
+    }
+    free(pos);
+  }
+  
+  free(toStr);
+  free(error);
+  return(0); 
 }
 
 /*
@@ -175,53 +228,12 @@ static int add_word(MYSQL_FTPARSER_PARAM *param, const char *word, size_t len)
     This is the main plugin function which is called to parse
     a document or a search query. The call mode is set in
     param->mode.  This function simply splits the text into words
-    and passes every word to the MySQL full-text indexing engine.
+    and passes every word to thai_parse function.
+
+  RETURN VALUE
+    0                    success
+    1                    failure (cannot happen)
 */
-
-static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str, int length, MYSQL_FTPARSER_BOOLEAN_INFO *bool_info)
-{
-  int ret, i, numBytePerChar, numCut;
-  int *pos;
-  uchar *toStr;
-  uint *error;
- 
-  toStr= (uchar *) malloc(sizeof(uchar) * param->length * my_charset_tis620_thai_ci.mbmaxlen);
-  error= (uint *) malloc(sizeof(uint) * param->length);
-  numBytePerChar= param->cs->mbmaxlen;
-  ret= 0;
-
-  /* convert to tis620, make it compatible with libthai */
-  my_convert((char *)toStr, length, &my_charset_tis620_thai_ci, 
-             str, length, param->cs,error);
- 
-  /* Check if this is an english word, if so, add to index directly*/ 
-  /* TODO: any better idea than this? */
-  //if(isalnum(toStr[0])) {
-  if(toStr[0] < 161) {
-    ret += add_word(param, str, length);  
-  } else {
-    /* This is Thai word/pharse */
-    /* find words boundary */ 
-    pos = (int *)malloc(sizeof(int) * length);
-    /* seem like numCut = sizeof(pos) - 1 ? */
-    numCut = th_brk (toStr, pos, length);
-    
-    /* split word, add to index */
-    for(i = 0; i <= numCut; i++) {
-      if (i == 0) { /* first word */
-        ret += add_word(param, str, pos[i] * numBytePerChar);  
-      } else {
-        ret += add_word(param, str + (pos[i - 1] * numBytePerChar),
-                (pos[i] - pos[i - 1]) * numBytePerChar);  
-      }
-    }
-    free(pos);
-  }
-  
-  free(toStr);
-  free(error);
-  return(ret); 
-}
 
 static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
 {
@@ -233,11 +245,12 @@ static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
   { FT_TOKEN_WORD, 0, 0, 0, 0, 0, ' ', 0};
   /* split string into token, we need this to detect Thai/English */
   while (fts_get_word(param->cs, start, end, &word, &bool_info)) {
-    //if (bool_info.type == FT_TOKEN_WORD) {
-      ret= ret+ thai_parse(param, (char *) word.pos, word.len, &bool_info);
-    //}
+    if (FT_TOKEN_WORD == bool_info.type) {
+      ret= thai_parse(param, (char *) word.pos, word.len, &bool_info);
+      if(ret) return(1); // error
+    }
   } 
-  return ret;
+  return(0);
 }
 
 /*
@@ -260,7 +273,7 @@ mysql_declare_plugin(thaift_parser)
   MYSQL_FTPARSER_PLUGIN,      /* type                            */
   &thai_parser_descriptor,  /* descriptor                      */
   "thaift_parser",            /* name                            */
-  "Pruet Boonma and Vee Satayamas",              /* author                          */
+  "Pruet Boonma",              /* author                          */
   "Thai Full-Text Parser",  /* description                     */
   PLUGIN_LICENSE_GPL,
   thai_parser_plugin_init,  /* init function (when loaded)     */
