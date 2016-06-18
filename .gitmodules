@@ -1,0 +1,3 @@
+[submodule "plugin/fulltext/thaift_parser"]
+	path = plugin/fulltext/thaift_parser
+	url = https://github.com/pruet/thaift_parser.git
