@@ -15,6 +15,8 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
 
 #include "my_config.h"
+#include <string.h> 
+#include <log.h>
 #include <fts0tokenize.h>
 #include <thai/thbrk.h>
 #include <thai/thwchar.h>
@@ -33,6 +35,7 @@
   - There is no minimum word length.  Non-whitespace sequences of one
     character or longer are words.
   - Support both natural and boolean search.
+  - This is 1-gram, with very small dictionary (one which included with libthai).
 
   Test cases provided by Vee Satayamas <vsatayamas@gmail.com>
 */
@@ -54,6 +57,26 @@
 
 static int thai_parser_plugin_init(void *arg __attribute__((unused)))
 {
+  /* 
+    TODO/
+    This is not pretty, but I don't know how to make it better.
+    Need to consult P'Thep
+  */
+  int length;
+  const char *str = "ÇÑ¹¹Õé½¹äÁèµ¡";
+  int *pos;
+
+  length = strlen(str);
+  pos= (int *)malloc(sizeof(int) * length);
+  if (NULL == pos) {
+		sql_print_error("Thaift: thai_parse_plugin_init() failed: out of memory.");
+    return(1);
+  }
+  //TO th_wbrk?
+  if(th_brk((uchar *)str, pos, length) == 0) {
+		sql_print_error("Thaift: thai_parse_plugin_init() failed: Can't load libthai.");
+    return(1);
+  }
   return(0);
 }
 
@@ -175,9 +198,23 @@ static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str,
   toStr= (uchar *) malloc(sizeof(uchar)
         * param->length
         * my_charset_tis620_thai_ci.mbmaxlen);
-  if (NULL == toStr) return 1;
+  if (NULL == toStr) {
+		sql_print_error("Thaift: thai_parse() failed: out of memory.");
+    return(1);
+  }
   error= (uint *) malloc(sizeof(uint) * param->length);
-  if (NULL == error) return 1;
+  if (NULL == error) {
+    free(toStr);
+		sql_print_error("Thaift: thai_parse() failed: out of memory.");
+    return(1);
+  }
+  pos= (int *)malloc(sizeof(int) * length);
+  if (NULL == pos) {
+    free(toStr);
+    free(error);
+		sql_print_error("Thaift: thai_parse() failed: out of memory.");
+    return(1);
+  }
   numBytePerChar= param->cs->mbmaxlen;
 
   /* convert to tis620, make it compatible with libthai */
@@ -194,7 +231,6 @@ static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str,
   } else {
     /* This is Thai word/pharse */
     /* find words boundary */ 
-    pos= (int *)malloc(sizeof(int) * length);
     /* seem like numCut = sizeof(pos) - 1 ? */
     numCut= th_brk (toStr, pos, length);
     
@@ -204,16 +240,16 @@ static int thai_parse(MYSQL_FTPARSER_PARAM *param, const char *str,
         add_word(param, str, pos[i] * numBytePerChar, bool_info);  
       } else {
         add_word(param,
-                 str + (pos[i - 1] * numBytePerChar),
-                 (pos[i] - pos[i - 1]) * numBytePerChar,
-                 bool_info);  
+                str + (pos[i - 1] * numBytePerChar),
+                (pos[i] - pos[i - 1]) * numBytePerChar,
+                bool_info);  
       }
     }
-    free(pos);
   }
   
-  free(toStr);
+  free(pos);
   free(error);
+  free(toStr);
   return(0); 
 }
 
@@ -243,10 +279,12 @@ static int thai_parser_parse(MYSQL_FTPARSER_PARAM *param)
   uchar *end= *start + param->length;
   MYSQL_FTPARSER_BOOLEAN_INFO	bool_info =
   { FT_TOKEN_WORD, 0, 0, 0, 0, 0, ' ', 0};
-  /* split string into token, we need this to detect Thai/English */
+  // split string into token, we need this to detect Thai/English 
   while (fts_get_word(param->cs, start, end, &word, &bool_info)) {
     if (FT_TOKEN_WORD == bool_info.type) {
       ret= thai_parse(param, (char *) word.pos, word.len, &bool_info);
+      //FIXME it possible that only partial of param->doc will be
+      // indexed 
       if(ret) return(1); // error
     }
   } 
