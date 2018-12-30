@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -107,7 +107,7 @@ srv_path_copy(
 	ulint		dest_len,	/*!< in: max bytes to copy */
 	const char*	basedir,	/*!< in: base directory */
 	const char*	table_name)	/*!< in: source table name */
-	__attribute__((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 /**
 Shutdown all background threads created by InnoDB. */
@@ -154,6 +154,8 @@ extern	bool	srv_startup_is_before_trx_rollback_phase;
 /** TRUE if a raw partition is in use */
 extern	ibool	srv_start_raw_disk_in_use;
 
+/** UNDO tablespaces starts with space id. */
+extern	ulint	srv_undo_space_id_start;
 
 /** Shutdown state */
 enum srv_shutdown_t {

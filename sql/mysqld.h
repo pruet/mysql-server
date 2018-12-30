@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -246,7 +246,7 @@ extern ulong open_files_limit;
 extern ulong binlog_cache_size, binlog_stmt_cache_size;
 extern ulonglong max_binlog_cache_size, max_binlog_stmt_cache_size;
 extern int32 opt_binlog_max_flush_queue_time;
-extern ulong opt_binlog_group_commit_sync_delay;
+extern long opt_binlog_group_commit_sync_delay;
 extern ulong opt_binlog_group_commit_sync_no_delay_count;
 extern ulong max_binlog_size, max_relay_log_size;
 extern ulong slave_max_allowed_packet;
@@ -322,6 +322,20 @@ extern char *opt_log_syslog_facility;
 /** The size of the host_cache. */
 extern uint host_cache_size;
 extern ulong log_error_verbosity;
+
+extern bool opt_keyring_operations;
+extern char *opt_keyring_migration_user;
+extern char *opt_keyring_migration_host;
+extern char *opt_keyring_migration_password;
+extern char *opt_keyring_migration_socket;
+extern char *opt_keyring_migration_source;
+extern char *opt_keyring_migration_destination;
+extern ulong opt_keyring_migration_port;
+/**
+  Variable to check if connection related options are set
+  as part of keyring migration.
+*/
+extern bool migrate_connect_options;
 
 /** System variable show_compatibility_56. */
 extern my_bool show_compatibility_56;
@@ -413,7 +427,8 @@ extern PSI_mutex_key
   key_structure_guard_mutex, key_TABLE_SHARE_LOCK_ha_data,
   key_LOCK_error_messages,
   key_LOCK_log_throttle_qni, key_LOCK_query_plan, key_LOCK_thd_query,
-  key_LOCK_cost_const, key_LOCK_current_cond;
+  key_LOCK_cost_const, key_LOCK_current_cond,
+  key_LOCK_keyring_operations;
 extern PSI_mutex_key key_RELAYLOG_LOCK_commit;
 extern PSI_mutex_key key_RELAYLOG_LOCK_commit_queue;
 extern PSI_mutex_key key_RELAYLOG_LOCK_done;
@@ -473,7 +488,6 @@ extern PSI_thread_key key_thread_bootstrap,
   key_thread_handle_manager, key_thread_main,
   key_thread_one_connection, key_thread_signal_hand,
   key_thread_compress_gtid_table, key_thread_parser_service;
-extern PSI_thread_key key_thread_daemon_plugin;
 extern PSI_thread_key key_thread_timer_notifier;
 
 extern PSI_file_key key_file_map;
@@ -823,6 +837,7 @@ extern mysql_rwlock_t LOCK_sys_init_connect, LOCK_sys_init_slave;
 extern mysql_rwlock_t LOCK_system_variables_hash;
 extern mysql_cond_t COND_manager;
 extern int32 thread_running;
+extern mysql_mutex_t LOCK_keyring_operations;
 
 extern char *opt_ssl_ca, *opt_ssl_capath, *opt_ssl_cert, *opt_ssl_cipher,
             *opt_ssl_key, *opt_ssl_crl, *opt_ssl_crlpath, *opt_tls_version;
@@ -899,7 +914,16 @@ enum options_mysqld
   OPT_SKIP_INNODB,
   OPT_AVOID_TEMPORAL_UPGRADE,
   OPT_SHOW_OLD_TEMPORALS,
-  OPT_ENFORCE_GTID_CONSISTENCY
+  OPT_ENFORCE_GTID_CONSISTENCY,
+  OPT_TRANSACTION_READ_ONLY,
+  OPT_TRANSACTION_ISOLATION,
+  OPT_KEYRING_MIGRATION_SOURCE,
+  OPT_KEYRING_MIGRATION_DESTINATION,
+  OPT_KEYRING_MIGRATION_USER,
+  OPT_KEYRING_MIGRATION_HOST,
+  OPT_KEYRING_MIGRATION_PASSWORD,
+  OPT_KEYRING_MIGRATION_SOCKET,
+  OPT_KEYRING_MIGRATION_PORT
 };
 
 
@@ -944,7 +968,7 @@ typedef int64 query_id_t;
 extern query_id_t global_query_id;
 
 /* increment query_id and return it.  */
-inline __attribute__((warn_unused_result)) query_id_t next_query_id()
+inline MY_ATTRIBUTE((warn_unused_result)) query_id_t next_query_id()
 {
   query_id_t id= my_atomic_add64(&global_query_id, 1);
   return (id+1);
@@ -954,7 +978,7 @@ inline __attribute__((warn_unused_result)) query_id_t next_query_id()
   TODO: Replace this with an inline function.
  */
 #ifndef EMBEDDED_LIBRARY
-extern "C" void unireg_abort(int exit_code) __attribute__((noreturn));
+extern "C" void unireg_abort(int exit_code) MY_ATTRIBUTE((noreturn));
 #else
 extern "C" void unireg_clear(int exit_code);
 #define unireg_abort(exit_code) do { unireg_clear(exit_code); DBUG_RETURN(exit_code); } while(0)

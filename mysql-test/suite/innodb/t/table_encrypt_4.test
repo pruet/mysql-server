@@ -4,6 +4,7 @@
 --source include/no_valgrind_without_big.inc
 --source include/have_innodb.inc
 --source include/not_embedded.inc
+--source include/have_debug.inc
 
 --exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
 -- send_shutdown
@@ -32,7 +33,7 @@ let $innodb_file_per_table = `SELECT @@innodb_file_per_table`;
 SET GLOBAL innodb_file_per_table = 1;
 SELECT @@innodb_file_per_table;
 
-# Create a table with encryption
+--echo # Create a table with encryption
 CREATE TABLE t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
 
 SHOW CREATE TABLE t1;
@@ -55,7 +56,7 @@ INSERT INTO t1 select * from t1;
 
 SELECT * FROM t1 LIMIT 10;
 
-# Test export/import encrypted tablespace.
+--echo # Test export/import encrypted tablespace.
 let $MYSQLD_DATADIR = `SELECT @@datadir`;
 
 if(!$source_db) {
@@ -107,6 +108,23 @@ if($source_db != $dest_db) {
 
 eval SELECT * FROM $dest_db.t1 LIMIT 10;
 
+eval ALTER TABLE $dest_db.t1 DISCARD TABLESPACE;
+
+--copy_file $MYSQLD_DATADIR/t1.cfg_back $MYSQLD_DATADIR/$dest_db/t1.cfg
+--copy_file $MYSQLD_DATADIR/t1.cfp_back $MYSQLD_DATADIR/$dest_db/t1.cfp
+--copy_file $MYSQLD_DATADIR/t1.ibd_back $MYSQLD_DATADIR/$dest_db/t1.ibd
+
+--echo # Try import in another session.
+connect (con1,localhost,root);
+--disable_warnings
+eval ALTER TABLE $dest_db.t1 IMPORT TABLESPACE;
+--enable_warnings
+disconnect con1;
+
+connection default;
+
+eval SELECT * FROM $dest_db.t1 LIMIT 10;
+
 # Try negative case
 eval ALTER TABLE $dest_db.t1 DISCARD TABLESPACE;
 
@@ -151,6 +169,19 @@ eval ALTER TABLE $dest_db.t1 DISCARD TABLESPACE;
 --error 1808
 eval ALTER TABLE $dest_db.t1 IMPORT TABLESPACE;
 
+--echo # Import got expected error.
+DROP TABLE t1;
+--remove_file $MYSQLD_DATADIR/$dest_db/t1.cfg
+--remove_file $MYSQLD_DATADIR/$dest_db/t1.cfp
+--remove_file $MYSQLD_DATADIR/$dest_db/t1.ibd
+eval CREATE TABLE $dest_db.t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
+eval ALTER TABLE $dest_db.t1 DISCARD TABLESPACE;
+--copy_file $MYSQLD_DATADIR/t1.cfp_back $MYSQLD_DATADIR/$dest_db/t1.cfp
+--copy_file $MYSQLD_DATADIR/t1.ibd_back $MYSQLD_DATADIR/$dest_db/t1.ibd
+--copy_file $MYSQLD_DATADIR/t1.cfg_back $MYSQLD_DATADIR/$dest_db/t1.cfg
+SET SESSION DEBUG="+d, fsp_header_rotate_encryption_failure";
+--error ER_GET_ERRNO
+eval ALTER TABLE $dest_db.t1 IMPORT TABLESPACE;
 
 # Cleanup
 --disable_query_log

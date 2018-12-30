@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -261,13 +261,17 @@ struct mtr_t {
 	MLOG_FILE_NAME records and a MLOG_CHECKPOINT marker.
 	The caller must invoke log_mutex_enter() and log_mutex_exit().
 	This is to be used at log_checkpoint().
-	@param[in]	checkpoint_lsn	the LSN of the log checkpoint  */
-	void commit_checkpoint(lsn_t checkpoint_lsn);
+	@param[in]	checkpoint_lsn		the LSN of the log checkpoint
+	@param[in]	write_mlog_checkpoint	Write MLOG_CHECKPOINT marker
+						if it is enabled. */
+	void commit_checkpoint(
+		lsn_t	checkpoint_lsn,
+		bool	write_mlog_checkpoint);
 
 	/** Return current size of the buffer.
 	@return	savepoint */
 	ulint get_savepoint() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		ut_ad(is_active());
 		ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
@@ -297,7 +301,7 @@ struct mtr_t {
 	/** Get the logging mode.
 	@return	logging mode */
 	inline mtr_log_t get_log_mode() const
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Change the logging mode.
 	@param mode	 logging mode
@@ -366,7 +370,7 @@ struct mtr_t {
 	@param type)	MLOG_1BYTE, MLOG_2BYTES, MLOG_4BYTES
 	@return	value read */
 	inline ulint read_ulint(const byte* ptr, mlog_id_t type) const
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Locks a rw-latch in S mode.
 	NOTE: use mtr_s_lock().
@@ -485,7 +489,7 @@ struct mtr_t {
 		mtr_buf_t*	memo,
 		const void*	object,
 		ulint		type)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Check if memo contains the given item.
 	@param object		object to search
@@ -581,7 +585,7 @@ struct mtr_t {
 	@param block	block being x-fixed
 	@return true if the mtr is dirtying a clean page. */
 	static bool is_block_dirtied(const buf_block_t* block)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 private:
 	/** Look up the system tablespace. */

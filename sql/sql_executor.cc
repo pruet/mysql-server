@@ -1,4 +1,4 @@
-/* Copyright (c) 2000, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2000, 2017, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -490,7 +490,7 @@ init_tmptable_sum_functions(Item_sum **func_ptr)
 
 static void
 update_tmptable_sum_func(Item_sum **func_ptr,
-			 TABLE *tmp_table __attribute__((unused)))
+			 TABLE *tmp_table MY_ATTRIBUTE((unused)))
 {
   Item_sum *func;
   while ((func= *(func_ptr++)))
@@ -624,12 +624,18 @@ end_sj_materialize(JOIN *join, QEP_TAB *qep_tab, bool end_of_records)
     if ((error= table->file->ha_write_row(table->record[0])))
     {
       /* create_ondisk_from_heap will generate error if needed */
-      if (!table->file->is_ignorable_error(error) &&
-          create_ondisk_from_heap(thd, table,
+      if (!table->file->is_ignorable_error(error))
+      {
+        if (create_ondisk_from_heap(thd, table,
                                   sjm->table_param.start_recinfo, 
                                   &sjm->table_param.recinfo, error,
                                   TRUE, NULL))
-        DBUG_RETURN(NESTED_LOOP_ERROR); /* purecov: inspected */
+          DBUG_RETURN(NESTED_LOOP_ERROR); /* purecov: inspected */
+        /* Initialize the index, since create_ondisk_from_heap does
+           not replicate the earlier index initialization */
+        if (table->hash_field)
+          table->file->ha_index_init(0, false);
+      }
     }
   }
   DBUG_RETURN(NESTED_LOOP_OK);
@@ -1568,6 +1574,9 @@ evaluate_join_record(JOIN *join, QEP_TAB *const qep_tab)
             DBUG_RETURN(NESTED_LOOP_OK);
           }
         }
+        /* check for errors evaluating the condition */
+        if (join->thd->is_error())
+          DBUG_RETURN(NESTED_LOOP_ERROR);
       }
       /*
         Check whether join_tab is not the last inner table
@@ -2051,6 +2060,13 @@ join_read_key(QEP_TAB *tab)
 
   if (!table->file->inited)
   {
+    /*
+      Disable caching for inner table of outer join, since setting the NULL
+      property on the table will overwrite NULL bits and hence destroy the
+      current row for later use as a cached row.
+    */
+    if (tab->table_ref->is_inner_table_of_outer_join())
+      table_ref->disable_cache= true;
     DBUG_ASSERT(!tab->use_order()); //Don't expect sort req. for single row.
     if ((error= table->file->ha_index_init(table_ref->key, tab->use_order())))
     {
@@ -2290,7 +2306,7 @@ join_read_last_key(QEP_TAB *tab)
 
 	/* ARGSUSED */
 static int
-join_no_more_records(READ_RECORD *info __attribute__((unused)))
+join_no_more_records(READ_RECORD *info MY_ATTRIBUTE((unused)))
 {
   return -1;
 }
@@ -3099,20 +3115,20 @@ static bool cmp_field_value(Field *field, my_ptrdiff_t diff)
     1) NULL flags aren't the same
     2) length isn't the same
     3) data isn't the same
-    */
-  if (field->is_real_null() != field->is_real_null(diff))   // 1
-    return true;
+  */
+  const bool value1_isnull= field->is_real_null();
+  const bool value2_isnull= field->is_real_null(diff);
 
-  const size_t src_len= field->data_length();
-  const size_t dst_len= field->data_length(diff);
+  if (value1_isnull != value2_isnull)   // 1
+    return true;
+  if (value1_isnull)
+    return false; // Both values are null, no need to proceed.
+
+  const size_t value1_length= field->data_length();
+  const size_t value2_length= field->data_length(diff);
 
   if (field->type() == MYSQL_TYPE_JSON)
   {
-    if (field->is_real_null())
-    {
-      return false;
-    }
-
     Field_json *json_field= down_cast<Field_json *>(field);
 
     // Fetch the JSON value on the left side of the comparison.
@@ -3132,11 +3148,11 @@ static bool cmp_field_value(Field *field, my_ptrdiff_t diff)
   }
 
   // Trailing space can't be skipped and length is different
-  if (!field->is_text_key_type() && src_len != dst_len)     // 2
+  if (!field->is_text_key_type() && value1_length != value2_length)     // 2
     return true;
 
   if (field->cmp_max(field->ptr, field->ptr + diff,       // 3
-                     std::max(src_len, dst_len)))
+                     std::max(value1_length, value2_length)))
     return true;
 
   return false;
@@ -4170,7 +4186,7 @@ setup_copy_fields(THD *thd, Temp_table_param *param,
   Item *pos;
   List_iterator_fast<Item> li(all_fields);
   Copy_field *copy= NULL;
-  Copy_field *copy_start __attribute__((unused));
+  Copy_field *copy_start MY_ATTRIBUTE((unused));
   res_selected_fields.empty();
   res_all_fields.empty();
   List_iterator_fast<Item> itr(res_all_fields);

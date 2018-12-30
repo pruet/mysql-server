@@ -1,4 +1,4 @@
-/* Copyright (c) 2000, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2000, 2018, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -136,13 +136,6 @@ bool Sql_cmd_delete::mysql_delete(THD *thd, ha_rows limit)
     DBUG_RETURN(true);
 
   const_cond= (!conds || conds->const_item());
-  if (safe_update && const_cond)
-  {
-    my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
-               ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
-    DBUG_RETURN(TRUE);
-  }
-
   const_cond_result= const_cond && (!conds || conds->val_int());
   if (thd->is_error())
   {
@@ -190,6 +183,14 @@ bool Sql_cmd_delete::mysql_delete(THD *thd, ha_rows limit)
     {
       err= explain_single_table_modification(thd, &plan, select_lex);
       goto exit_without_my_ok;
+    }
+
+    /* Do not allow deletion of all records if safe_update is set. */
+    if (safe_update)
+    {
+      my_error(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE, MYF(0),
+               thd->get_stmt_da()->get_first_condition_message());
+      DBUG_RETURN(true);
     }
 
     DBUG_PRINT("debug", ("Trying to use delete_all_rows()"));
@@ -321,13 +322,22 @@ bool Sql_cmd_delete::mysql_delete(THD *thd, ha_rows limit)
   /* If running in safe sql mode, don't allow updates without keys */
   if (table->quick_keys.is_clear_all())
   {
-    thd->server_status|=SERVER_QUERY_NO_INDEX_USED;
-    if (safe_update && !using_limit)
+    thd->server_status|= SERVER_QUERY_NO_INDEX_USED;
+
+    /*
+      Safe update error isn't returned if:
+      1) It is  an EXPLAIN statement OR
+      2) LIMIT is present.
+
+      Append the first warning (if any) to the error message. This allows the
+      user to understand why index access couldn't be chosen.
+    */
+    if (!thd->lex->is_explain() && safe_update &&  !using_limit)
     {
       free_underlaid_joins(thd, select_lex);
-      my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
-                 ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
-      DBUG_RETURN(TRUE);
+      my_error(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE, MYF(0),
+               thd->get_stmt_da()->get_first_condition_message());
+      DBUG_RETURN(true);
     }
   }
 
@@ -661,7 +671,6 @@ bool Sql_cmd_delete::mysql_prepare_delete(THD *thd)
     List<Item>   fields;
     List<Item>   all_fields;
 
-    memset(&tables, 0, sizeof(tables));
     tables.table = table_list->table;
     tables.alias = table_list->alias;
 
@@ -756,12 +765,6 @@ int Sql_cmd_delete_multi::mysql_multi_delete_prepare(THD *thd,
   }
   *table_count= 0;
 
-  /*
-    Multi-delete can't be constructed over-union => we always have
-    single SELECT on top and have to check underlying SELECTs of it
-  */
-  select->exclude_from_table_unique_test= true;
-
   // Check the list of tables to be deleted from
   for (TABLE_LIST *delete_target= lex->auxiliary_table_list.first;
        delete_target;
@@ -798,24 +801,7 @@ int Sql_cmd_delete_multi::mysql_multi_delete_prepare(THD *thd,
 
     // Enable the following code if allowing LIMIT with multi-table DELETE
     DBUG_ASSERT(select->select_limit == 0);
-
-    /*
-      Check that table from which we delete is not used somewhere
-      inside subqueries/view.
-    */
-    TABLE_LIST *duplicate= unique_table(thd, table_ref->updatable_base_table(),
-                                        lex->query_tables, false);
-    if (duplicate)
-    {
-      update_non_unique_table_error(table_ref, "DELETE", duplicate);
-      DBUG_RETURN(true);
-    }
   }
-  /*
-    Reset the exclude flag to false so it doesn't interfare
-    with further calls to unique_table
-  */
-  select->exclude_from_table_unique_test= false;
 
   DBUG_RETURN(false);
 }
@@ -837,13 +823,43 @@ int Query_result_delete::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
   DBUG_ENTER("Query_result_delete::prepare");
   unit= u;
   do_delete= true;
-  /* Don't use KEYREAD optimization on this table */
+  /*
+    Multi-delete can't be constructed over-union => we always have
+    single SELECT on top and have to check underlying SELECTs of it
+  */
+  SELECT_LEX *const select= unit->first_select();
+  select->exclude_from_table_unique_test= true;
+
   for (TABLE_LIST *walk= delete_tables; walk; walk= walk->next_local)
-    if (walk->correspondent_table)
+  {
+    if (walk->correspondent_table == NULL)
+      continue;
+
+    TABLE_LIST *ref= walk->correspondent_table->updatable_base_table();
+
+    // Don't use KEYREAD optimization on this table
+    ref->table->no_keyread= true;
+
+    /*
+      Check that table from which we delete is not used somewhere
+      inside subqueries/view.
+    */
+    TABLE_LIST *duplicate= unique_table(thd, ref,
+                                        thd->lex->query_tables, false);
+    if (duplicate)
     {
-      TABLE_LIST *ref= walk->correspondent_table->updatable_base_table();
-      ref->table->no_keyread= true;
+      update_non_unique_table_error(walk->correspondent_table,
+                                    "DELETE", duplicate);
+      DBUG_RETURN(1);
     }
+  }
+
+  /*
+    Reset the exclude flag to false so it doesn't interfer
+    with further calls to unique_table
+  */
+  select->exclude_from_table_unique_test= false;
+
   THD_STAGE_INFO(thd, stage_deleting_from_main_table);
   DBUG_RETURN(0);
 }

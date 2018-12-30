@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, Google Inc.
 
 Portions of this file contain modifications contributed and copyrighted by
@@ -319,7 +319,7 @@ ibool
 rw_lock_s_lock_low(
 /*===============*/
 	rw_lock_t*	lock,	/*!< in: pointer to rw-lock */
-	ulint		pass __attribute__((unused)),
+	ulint		pass MY_ATTRIBUTE((unused)),
 				/*!< in: pass value; != 0, if the lock will be
 				passed to another thread to unlock */
 	const char*	file_name, /*!< in: file name where lock requested */
@@ -535,7 +535,7 @@ rw_lock_own(
 	rw_lock_t*	lock,		/*!< in: rw-lock */
 	ulint		lock_type)	/*!< in: lock type: RW_LOCK_S,
 					RW_LOCK_X */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /******************************************************************//**
 Checks if the thread has locked the rw-lock in the specified mode, with
@@ -546,7 +546,7 @@ rw_lock_own_flagged(
 	const rw_lock_t*	lock,	/*!< in: rw-lock */
 	rw_lock_flags_t		flags)	/*!< in: specify lock types with
 					OR of the rw_lock_flag_t values */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 #endif /* UNIV_DEBUG */
 /******************************************************************//**
 Checks if somebody has locked the rw-lock in the specified mode.
@@ -764,7 +764,7 @@ UNIV_INLINE
 void
 pfs_rw_lock_create_func(
 /*====================*/
-	PSI_rwlock_key  key,		/*!< in: key registered with
+	mysql_pfs_key_t	key,		/*!< in: key registered with
 					performance schema */
 	rw_lock_t*	lock,		/*!< in: rw lock */
 #ifdef UNIV_DEBUG

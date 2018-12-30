@@ -717,8 +717,7 @@ static void set_psi(THD *thd)
 
 
 /**
-  Initializes physical thread to use with session service. The used
-  PSI key is key_thread_daemon_plugin
+  Initializes physical thread to use with session service.
 
   @param plugin Pointer to the plugin structure, passed to the plugin over
                 the plugin init function.
@@ -737,14 +736,6 @@ bool Srv_session::init_thread(const void *plugin)
     connection_errors_internal++;
     return true;
   }
-
-#ifdef HAVE_PSI_THREAD_INTERFACE
-  PSI_thread *psi= PSI_THREAD_CALL
-         (new_thread)(key_thread_daemon_plugin,
-                      NULL /*identity */,
-                      0 /* thread_id*/);
-  PSI_THREAD_CALL(set_thread)(psi);
-#endif
 
   server_session_threads.add(my_thread_self(), plugin);
 
@@ -814,9 +805,6 @@ void Srv_session::deinit_thread()
   my_set_thread_local(THR_srv_session_thread, NULL);
 
   DBUG_ASSERT(my_get_thread_local(THR_stack_start_address));
-#ifdef HAVE_PSI_THREAD_INTERFACE
-  PSI_THREAD_CALL(delete_current_thread)();
-#endif
   my_set_thread_local(THR_stack_start_address, NULL);
   my_thread_end();
 }
@@ -1281,6 +1269,12 @@ int Srv_session::execute_command(enum enum_server_command command,
   if (command != COM_QUERY)
     thd.reset_for_next_command();
 
+  DBUG_ASSERT(thd.m_statement_psi == NULL);
+  thd.m_statement_psi= MYSQL_START_STATEMENT(&thd.m_statement_state,
+                                             stmt_info_new_packet.m_key,
+                                             thd.db().str,
+                                             thd.db().length,
+                                             thd.charset(), NULL);
   int ret= dispatch_command(&thd, data, command);
 
   thd.set_protocol(&protocol_error);

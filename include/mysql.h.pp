@@ -180,6 +180,9 @@ my_bool check_scramble(const unsigned char *reply, const char *message,
 void get_salt_from_password(unsigned char *res, const char *password);
 void make_password_from_salt(char *to, const unsigned char *hash_stage2);
 char *octet2hex(char *to, const char *str, unsigned int len);
+my_bool generate_sha256_scramble(unsigned char *dst, size_t dst_size,
+                                 const char *src, size_t src_size, const char *rnd,
+                                 size_t rnd_size);
 char *get_tty_password(const char *opt_message);
 const char *mysql_errno_to_sqlstate(unsigned int mysql_errno);
 my_bool my_thread_init(void);
@@ -213,10 +216,10 @@ extern int list_walk(LIST *,list_walk_action action,unsigned char * argument);
 #include "mysql/client_plugin.h"
 struct st_mysql_client_plugin
 {
-  int type; unsigned int interface_version; const char *name; const char *author; const char *desc; unsigned int version[3]; const char *license; void *mysql_api; int (*init)(char *, size_t, int, va_list); int (*deinit)(); int (*options)(const char *option, const void *);
+  int type; unsigned int interface_version; const char *name; const char *author; const char *desc; unsigned int version[3]; const char *license; void *mysql_api; int (*init)(char *, size_t, int, va_list); int (*deinit)(void); int (*options)(const char *option, const void *);
 };
 struct st_mysql;
-#include <mysql/plugin_auth_common.h>
+#include "plugin_auth_common.h"
 typedef struct st_plugin_vio_info
 {
   enum { MYSQL_VIO_INVALID, MYSQL_VIO_TCP, MYSQL_VIO_SOCKET,
@@ -234,7 +237,7 @@ typedef struct st_plugin_vio
 } MYSQL_PLUGIN_VIO;
 struct st_mysql_client_plugin_AUTHENTICATION
 {
-  int type; unsigned int interface_version; const char *name; const char *author; const char *desc; unsigned int version[3]; const char *license; void *mysql_api; int (*init)(char *, size_t, int, va_list); int (*deinit)(); int (*options)(const char *option, const void *);
+  int type; unsigned int interface_version; const char *name; const char *author; const char *desc; unsigned int version[3]; const char *license; void *mysql_api; int (*init)(char *, size_t, int, va_list); int (*deinit)(void); int (*options)(const char *option, const void *);
   int (*authenticate_user)(MYSQL_PLUGIN_VIO *vio, struct st_mysql *mysql);
 };
 struct st_mysql_client_plugin *
@@ -280,7 +283,7 @@ typedef unsigned int MYSQL_FIELD_OFFSET;
 typedef unsigned long long my_ulonglong;
 #include "typelib.h"
 #include "my_alloc.h"
-#include <mysql/psi/psi_memory.h>
+#include "mysql/psi/psi_memory.h"
 #include "psi_base.h"
 struct PSI_thread;
 typedef unsigned int PSI_memory_key;
@@ -362,7 +365,8 @@ enum mysql_option
   MYSQL_OPT_SSL_ENFORCE,
   MYSQL_OPT_MAX_ALLOWED_PACKET, MYSQL_OPT_NET_BUFFER_LENGTH,
   MYSQL_OPT_TLS_VERSION,
-  MYSQL_OPT_SSL_MODE
+  MYSQL_OPT_SSL_MODE,
+  MYSQL_OPT_GET_SERVER_PUBLIC_KEY
 };
 struct st_mysql_options_extention;
 struct st_mysql_options {

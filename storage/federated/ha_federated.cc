@@ -1,4 +1,4 @@
-/* Copyright (c) 2004, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2004, 2018, Oracle and/or its affiliates. All rights reserved.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -425,7 +425,7 @@ static handler *federated_create_handler(handlerton *hton,
 /* Function we use in the creation of our hash to get key */
 
 static uchar *federated_get_key(FEDERATED_SHARE *share, size_t *length,
-                                my_bool not_used __attribute__ ((unused)))
+                                my_bool not_used MY_ATTRIBUTE ((unused)))
 {
   *length= share->share_key_length;
   return (uchar*) share->share_key;
@@ -1427,6 +1427,7 @@ bool ha_federated::create_where_from_key(String *to,
           }
           break;
         }
+        // Fall through
       case HA_READ_KEY_OR_NEXT:
         DBUG_PRINT("info", ("federated HA_READ_KEY_OR_NEXT %d", i));
         if (emit_key_part_name(&tmp, key_part) ||
@@ -1446,6 +1447,7 @@ bool ha_federated::create_where_from_key(String *to,
             goto err;
           break;
         }
+        // Fall through
       case HA_READ_KEY_OR_PREV:
         DBUG_PRINT("info", ("federated HA_READ_KEY_OR_PREV %d", i));
         if (emit_key_part_name(&tmp, key_part) ||
@@ -2757,7 +2759,7 @@ int ha_federated::read_next(uchar *buf, MYSQL_RES *result)
   @param[in]  record  record data (unused)
 */
 
-void ha_federated::position(const uchar *record __attribute__ ((unused)))
+void ha_federated::position(const uchar *record MY_ATTRIBUTE ((unused)))
 {
   DBUG_ENTER("ha_federated::position");
   
@@ -3285,6 +3287,9 @@ int ha_federated::stash_remote_error()
   if (remote_error_number == ER_DUP_ENTRY ||
       remote_error_number == ER_DUP_KEY)
     DBUG_RETURN(HA_ERR_FOUND_DUPP_KEY);
+  if (remote_error_number == ER_NO_REFERENCED_ROW ||
+      remote_error_number == ER_NO_REFERENCED_ROW_2)
+    DBUG_RETURN(HA_ERR_NO_REFERENCED_ROW);
   DBUG_RETURN(HA_FEDERATED_ERROR_WITH_REMOTE_SYSTEM);
 }
 
@@ -3436,7 +3441,7 @@ int ha_federated::execute_simple_query(const char *query, int len)
 {
   DBUG_ENTER("ha_federated::execute_simple_query");
 
-  if (mysql_real_query(mysql, query, len))
+  if (mysql_real_query(mysql, query, (ulong)len))
   {
     DBUG_RETURN(stash_remote_error());
   }

@@ -1348,7 +1348,6 @@ set global innodb_limit_optimistic_insert_debug=
 --echo #
 create table t1(a blob);
 insert into t1 values ('a');
---echo # The query result is not correct until bug#20692219 is fixed
 select distinct least(1,count(distinct a)) from t1 group by a;
 drop table t1;
 
@@ -1363,3 +1362,21 @@ set big_tables= @old_big_tables;
 set optimizer_switch= @old_optimizer_switch;
 --source include/restore_sql_mode_after_turn_off_only_full_group_by.inc
 --echo #
+
+--echo #
+--echo # Bug #22343910: SELECT DISTINCT NOT RETURNING DISTINCT ROWS IN 5.7
+--echo #
+
+CREATE TABLE test_distinct (c1 VARCHAR(1000),
+                            c2 CHAR(5) DEFAULT 'xxxxx');
+INSERT INTO test_distinct VALUES ('a',null),  ('a',null);
+
+SET global internal_tmp_disk_storage_engine=MYISAM;
+SELECT DISTINCT c1, c2 FROM test_distinct;
+SELECT c1, c2 FROM test_distinct GROUP BY c1, c2;
+
+SET global internal_tmp_disk_storage_engine=INNODB;
+SELECT DISTINCT c1, c2 FROM test_distinct;
+SELECT c1, c2 FROM test_distinct GROUP BY c1, c2;
+
+DROP TABLE test_distinct;

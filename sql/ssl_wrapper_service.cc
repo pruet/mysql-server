@@ -1,4 +1,4 @@
-/*  Copyright (c) 2016, Oracle and/or its affiliates. All rights reserved.
+/*  Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 
     This program is free software; you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
@@ -33,7 +33,7 @@ using namespace yaSSL;
 namespace ssl_wrappe_service
 {
 
-int __attribute__((visibility("default")))
+int MY_ATTRIBUTE((visibility("default")))
 dummy_function_to_ensure_we_are_linked_into_the_server() { return 1; }
 
 } // namespace ssl_wrappe_service
@@ -46,6 +46,8 @@ extern "C"
 static char *
 my_asn1_time_to_string(ASN1_TIME *time, char *buf, size_t len)
 {
+  if (!time)
+      return NULL;
   return yaSSL_ASN1_TIME_to_string(time, buf, len);
 }
 
@@ -322,7 +324,9 @@ void ssl_wrapper_thread_cleanup()
 {
 #if !defined(HAVE_YASSL)
   ERR_clear_error();
-  ERR_remove_state(0);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  ERR_remove_thread_state(0);
+#endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
 #endif // !defined(HAVE_YASSL)
 }
 

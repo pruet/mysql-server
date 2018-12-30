@@ -8,8 +8,8 @@ SELECT        * FROM t1;
 SELECT /*+ */ * FROM t1;
 SELECT digest, digest_text FROM performance_schema.events_statements_history ORDER BY timer_start DESC LIMIT 2;
 digest	digest_text
-aa2b8beea3da6345bea9789297916674	SELECT * FROM `t1` 
-aa2b8beea3da6345bea9789297916674	SELECT * FROM `t1` 
+23a2bd5d5f00f61920a837cbec0340c8	SELECT * FROM `t1` 
+23a2bd5d5f00f61920a837cbec0340c8	SELECT * FROM `t1` 
 # Digests should be different:
 SELECT * FROM t1, t2;
 SELECT /*+
@@ -33,19 +33,19 @@ SUBQUERY(t1)
 */ * FROM t1, t2;
 SELECT digest, digest_text FROM performance_schema.events_statements_history ORDER BY timer_start DESC LIMIT 2;
 digest	digest_text
-c775f00b3a3b9c9e4ae5e678a72d7b34	SELECT /*+ BKA ( `t1`@`qb1` ) BNL ( @`qb1` `t1` ) DUPSWEEDOUT FIRSTMATCH INTOEXISTS LOOSESCAN MATERIALIZATION MRR ( `t1` ) NO_BKA ( `t2` ) NO_BNL ( `t2` ) NO_ICP ( `t2` ) NO_MRR ( `t2` ) NO_RANGE_OPTIMIZATION ( `t2` ) NO_SEMIJOIN ( `t2` ) QB_NAME ( `qb1` ) SEMIJOIN ( `t1` ) SUBQUERY ( `t1` ) */ * FROM `t1` , `t2` 
-38b84fdf09bf01c3de9e170d8ed08594	SELECT * FROM `t1` , `t2` 
+b5dcadc964d9c74aeaafbc7422843058	SELECT /*+ BKA ( `t1`@`qb1` ) BNL ( @`qb1` `t1` ) DUPSWEEDOUT FIRSTMATCH INTOEXISTS LOOSESCAN MATERIALIZATION MRR ( `t1` ) NO_BKA ( `t2` ) NO_BNL ( `t2` ) NO_ICP ( `t2` ) NO_MRR ( `t2` ) NO_RANGE_OPTIMIZATION ( `t2` ) NO_SEMIJOIN ( `t2` ) QB_NAME ( `qb1` ) SEMIJOIN ( `t1` ) SUBQUERY ( `t1` ) */ * FROM `t1` , `t2` 
+b52b5a0d94d733e8e605cd1152080d8a	SELECT * FROM `t1` , `t2` 
 SELECT * FROM t2, t1;
 SELECT /*+ MAX_EXECUTION_TIME(10) */ * FROM t2, t1;
 SELECT digest, digest_text FROM performance_schema.events_statements_history ORDER BY timer_start DESC LIMIT 2;
 digest	digest_text
-6257b59b33242b2dc7735d90052ebf15	SELECT /*+ MAX_EXECUTION_TIME (?) */ * FROM `t2` , `t1` 
-d98094de7bb333482962225ca0fd8d40	SELECT * FROM `t2` , `t1` 
+def05dbaf5e5ab9af48b70c27c603de2	SELECT /*+ MAX_EXECUTION_TIME (?) */ * FROM `t2` , `t1` 
+1613448fc70feba2d3302a92ea1cc139	SELECT * FROM `t2` , `t1` 
 SELECT 1;
 SELECT /*+ bad_hint_also_goes_to_digest */ 1;
 SELECT digest, digest_text FROM performance_schema.events_statements_history ORDER BY timer_start DESC LIMIT 2;
 digest	digest_text
-9f205a1795e3ec27c559388a702383ab	SELECT /*+ `bad_hint_also_goes_to_digest` */ ? 
-2c7e64d74a4f06d8ceff62d23ae9180c	SELECT ? 
+7936911d8f35e950c5c3bbc98eee3c4f	SELECT /*+ `bad_hint_also_goes_to_digest` */ ? 
+3d4fc22e33e10d7235eced3c75a84c2c	SELECT ? 
 DROP TABLE t1, t2;
 #

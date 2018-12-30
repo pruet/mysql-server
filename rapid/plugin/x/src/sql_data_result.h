@@ -25,13 +25,17 @@
 
 namespace xpl
 {
+class PFS_string;
 
 class Sql_data_result
 {
 public:
   Sql_data_result(Sql_data_context &context);
 
-  void query(const std::string &query);
+  void disable_binlog();
+  void restore_binlog();
+
+  void query(const ngs::PFS_string &query);
 
   void get_next_field(long &value);
   void get_next_field(bool &value);
@@ -41,6 +45,13 @@ public:
 
   bool next_row();
   long statement_warn_count();
+  Buffering_command_delegate::Resultset::size_type size() const { return m_result_set.size(); }
+
+  template<typename T> Sql_data_result &get(T &value)
+  {
+    get_next_field(value);
+    return *this;
+  }
 
 private:
   typedef Callback_command_delegate::Field_value Field_value;

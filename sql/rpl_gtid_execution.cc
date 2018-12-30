@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -113,9 +113,9 @@ bool set_gtid_next(THD *thd, const Gtid_specification &spec)
         */
         break;
       }
-      my_thread_id owner= gtid_state->get_owner(spec.gtid);
+
       // GTID not owned by anyone: acquire ownership
-      if (owner == 0)
+      if (!gtid_state->is_owned(spec.gtid))
       {
         // acquire_ownership can't fail
         gtid_state->acquire_ownership(thd, spec.gtid);
@@ -420,6 +420,7 @@ bool gtid_reacquire_ownership_if_anonymous(THD *thd)
   - SHOW
   - SELECT
   - DO
+  - An empty statement because of a skipped version comment
   That means it is guaranteed not to cause any changes in the
   database.
 */
@@ -434,8 +435,11 @@ static bool is_stmt_innocent(const THD *thd)
     (sql_command == SQLCOM_SET_OPTION) && !lex->is_set_password_sql;
   bool is_select= (sql_command == SQLCOM_SELECT);
   bool is_do= (sql_command == SQLCOM_DO);
+  bool is_empty= (sql_command == SQLCOM_EMPTY_QUERY);
+  bool is_use= (sql_command == SQLCOM_CHANGE_DB);
   return
-    (is_set || is_select || is_do || is_show) &&
+    (is_set || is_select || is_do || is_show || is_empty ||
+     is_use) &&
     !lex->uses_stored_routines();
 }
 

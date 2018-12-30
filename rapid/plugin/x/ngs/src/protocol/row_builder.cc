@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015, 2016 Oracle and/or its affiliates. All rights reserved.
+* Copyright (c) 2015, 2017 Oracle and/or its affiliates. All rights reserved.
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License as
@@ -40,7 +40,7 @@ using namespace ngs;
   google::protobuf::internal::WireFormatLite::WriteTag( \
     1, \
     google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED, \
-    m_out_stream \
+    m_out_stream.get() \
   ); \
   ++m_num_fields;
 
@@ -58,7 +58,7 @@ void Row_builder::abort_row()
 {
   if (m_row_processing)
   {
-    delete m_out_stream;
+    m_out_stream.reset();
     m_out_buffer->rollback();
     m_row_processing = false;
   }
@@ -126,16 +126,16 @@ static inline int count_leading_zeroes(int i, dec1 val)
   switch (i)
   {
     /* @note Intentional fallthrough in all case labels */
-  case 9: if (val >= 1000000000) break; ++ret;
-  case 8: if (val >= 100000000) break; ++ret;
-  case 7: if (val >= 10000000) break; ++ret;
-  case 6: if (val >= 1000000) break; ++ret;
-  case 5: if (val >= 100000) break; ++ret;
-  case 4: if (val >= 10000) break; ++ret;
-  case 3: if (val >= 1000) break; ++ret;
-  case 2: if (val >= 100) break; ++ret;
-  case 1: if (val >= 10) break; ++ret;
-  case 0: if (val >= 1) break; ++ret;
+  case 9: if (val >= 1000000000) break; ++ret;  // Fall through.
+  case 8: if (val >= 100000000) break; ++ret;  // Fall through.
+  case 7: if (val >= 10000000) break; ++ret;  // Fall through.
+  case 6: if (val >= 1000000) break; ++ret;  // Fall through.
+  case 5: if (val >= 100000) break; ++ret;  // Fall through.
+  case 4: if (val >= 10000) break; ++ret;  // Fall through.
+  case 3: if (val >= 1000) break; ++ret;  // Fall through.
+  case 2: if (val >= 100) break; ++ret;  // Fall through.
+  case 1: if (val >= 10) break; ++ret;  // Fall through.
+  case 0: if (val >= 1) break; ++ret;  // Fall through.
   default: { DBUG_ASSERT(FALSE); }
   }
   return ret;
@@ -294,7 +294,7 @@ void Row_builder::add_decimal_field(const decimal_t * value)
   mysqlx::Decimal dec(str_buf);
   std::string dec_bytes = dec.to_bytes();
 
-  m_out_stream->WriteVarint32(dec_bytes.length());
+  m_out_stream->WriteVarint32(static_cast<google::protobuf::uint32>(dec_bytes.length()));
   m_out_stream->WriteString(dec_bytes);
 }
 
@@ -306,7 +306,7 @@ void Row_builder::add_decimal_field(const char * const value, size_t length)
   mysqlx::Decimal dec(dec_str);
   std::string dec_bytes = dec.to_bytes();
 
-  m_out_stream->WriteVarint32(dec_bytes.length());
+  m_out_stream->WriteVarint32(static_cast<google::protobuf::uint32>(dec_bytes.length()));
   m_out_stream->WriteString(dec_bytes);
 }
 
@@ -389,13 +389,13 @@ void Row_builder::add_time_field(const MYSQL_TIME * value, uint decimals)
 {
   ADD_FIELD_HEADER();
 
-  m_out_stream->WriteVarint32(get_time_size(value) + 1); // +1 for sign
+  m_out_stream->WriteVarint32(static_cast<google::protobuf::uint32>(get_time_size(value) + 1)); // +1 for sign
 
   /*sign*/
   google::protobuf::uint8 neg = (value->neg) ? 0x01 : 0x00;
   m_out_stream->WriteRaw(&neg, 1);
 
-  append_time_values(value, m_out_stream);
+  append_time_values(value, m_out_stream.get());
 }
 
 void Row_builder::add_datetime_field(const MYSQL_TIME * value, uint decimals)
@@ -405,7 +405,7 @@ void Row_builder::add_datetime_field(const MYSQL_TIME * value, uint decimals)
   google::protobuf::uint32 size = CodedOutputStream::VarintSize64(value->year)
     + CodedOutputStream::VarintSize64(value->month)
     + CodedOutputStream::VarintSize64(value->day)
-    + get_time_size(value);
+    + static_cast<int>(get_time_size(value));
 
   m_out_stream->WriteVarint32(size);
 
@@ -413,7 +413,7 @@ void Row_builder::add_datetime_field(const MYSQL_TIME * value, uint decimals)
   m_out_stream->WriteVarint64(value->month);
   m_out_stream->WriteVarint64(value->day);
 
-  append_time_values(value, m_out_stream);
+  append_time_values(value, m_out_stream.get());
 }
 
 void Row_builder::add_string_field(const char * const value, size_t length,
@@ -421,9 +421,9 @@ void Row_builder::add_string_field(const char * const value, size_t length,
 {
   ADD_FIELD_HEADER();
 
-  m_out_stream->WriteVarint32(length + 1); // 1 byte for thre trailing '\0'
+  m_out_stream->WriteVarint32(static_cast<google::protobuf::uint32>(length + 1)); // 1 byte for thre trailing '\0'
 
-  m_out_stream->WriteRaw(value, length);
+  m_out_stream->WriteRaw(value, static_cast<int>(length));
   char zero = '\0';
   m_out_stream->WriteRaw(&zero, 1);
 }
@@ -450,7 +450,7 @@ void Row_builder::add_set_field(const char * const value, size_t length,
     comma = std::strchr(p_value, ',');
     if (comma != NULL)
     {
-      elem_len = comma - p_value;
+      elem_len = static_cast<unsigned int>(comma - p_value);
       set_vals.push_back(std::string(p_value, elem_len));
       p_value = comma + 1;
     }
@@ -459,7 +459,7 @@ void Row_builder::add_set_field(const char * const value, size_t length,
   // still sth left to store
   if ((size_t)(p_value - value) < length)
   {
-    elem_len = length - (p_value - value);
+    elem_len = static_cast<unsigned int>(length - (p_value - value));
     set_vals.push_back(std::string(p_value, elem_len));
   }
 
@@ -468,7 +468,7 @@ void Row_builder::add_set_field(const char * const value, size_t length,
   for (size_t i = 0; i < set_vals.size(); ++i)
   {
     size += CodedOutputStream::VarintSize64(set_vals[i].length());
-    size += set_vals[i].length();
+    size += static_cast<google::protobuf::uint32>(set_vals[i].length());
   }
 
   // write total size to the buffer

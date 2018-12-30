@@ -20,12 +20,9 @@
 #ifndef _NGS_SETTER_ANY_H_
 #define _NGS_SETTER_ANY_H_
 
-#include <boost/function.hpp>
 #include <string>
 #include <vector>
-
-
-#include "mysqlx_datatypes.pb.h"
+#include "ngs_common/protocol_protobuf.h"
 
 
 namespace ngs

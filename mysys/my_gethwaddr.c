@@ -1,4 +1,4 @@
-/* Copyright (c) 2004, 2015, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2004, 2018, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -109,7 +109,7 @@ my_bool my_gethwaddr(uchar *to)
     {
       /* Reset struct, copy interface name */
       memset(&ifr, 0, sizeof(ifr));
-      strncpy(ifr.ifr_name, ifri->ifr_name, sizeof(ifr.ifr_name));
+      memcpy(ifr.ifr_name, ifri->ifr_name, sizeof(ifr.ifr_name));
 
       /* Get HW address, break if not 0 */
       if (ioctl(fd, SIOCGIFHWADDR, &ifr) >= 0)
@@ -230,14 +230,14 @@ my_bool my_gethwaddr(uchar *to)
 
 #else /* __FreeBSD__ || __linux__ || _WIN32 */
 /* just fail */
-my_bool my_gethwaddr(uchar *to __attribute__((unused)))
+my_bool my_gethwaddr(uchar *to MY_ATTRIBUTE((unused)))
 {
   return 1;
 }
 #endif
 
 #else /* MAIN */
-int main(int argc __attribute__((unused)),char **argv)
+int main(int argc MY_ATTRIBUTE((unused)),char **argv)
 {
   uchar mac[6];
   uint i;

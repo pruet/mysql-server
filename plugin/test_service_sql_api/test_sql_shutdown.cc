@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2015, 2018, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -102,8 +102,8 @@ struct st_plugin_ctx
 
   uint server_status;
   uint warn_count;
-  ulonglong affected_rows;
-  ulonglong last_insert_id;
+  uint affected_rows;
+  uint last_insert_id;
   char message[1024];
 
   uint sql_errno;
@@ -251,7 +251,7 @@ static int sql_get_null(void *ctx)
   uint col= pctx->current_col;
   pctx->current_col++;
 
-  strncpy(pctx->sql_str_value[row][col], "[NULL]", sizeof("[NULL]")-1);
+  strcpy(pctx->sql_str_value[row][col], "[NULL]");
   pctx->sql_str_len[row][col]=  sizeof("[NULL]")-1;
 
   DBUG_RETURN(false);
@@ -267,7 +267,7 @@ static int sql_get_integer(void * ctx, longlong value)
   uint col= pctx->current_col;
   pctx->current_col++;
 
-  size_t len= my_snprintf(buffer, sizeof(buffer), "%lld", value);
+  size_t len= my_snprintf(buffer, sizeof(buffer), "%d", value);
 
   strncpy(pctx->sql_str_value[row][col], buffer, len);
   pctx->sql_str_len[row][col]= len;

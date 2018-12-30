@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2012, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2012, 2018, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -109,18 +109,18 @@ struct row_index_t {
 struct row_import {
 	row_import() UNIV_NOTHROW
 		:
-		m_table(),
-		m_version(),
-		m_hostname(),
-		m_table_name(),
-		m_autoinc(),
+		m_table(NULL),
+		m_version(0),
+		m_hostname(NULL),
+		m_table_name(NULL),
+		m_autoinc(0),
 		m_page_size(0, 0, false),
-		m_flags(),
-		m_n_cols(),
-		m_cols(),
-		m_col_names(),
-		m_n_indexes(),
-		m_indexes(),
+		m_flags(0),
+		m_n_cols(0),
+		m_cols(NULL),
+		m_col_names(NULL),
+		m_n_indexes(0),
+		m_indexes(NULL),
 		m_missing(true),
 		m_cfp_missing(true)	{ }
 
@@ -1311,11 +1311,17 @@ row_import::match_schema(
 	/* Do some simple checks. */
 
 	if (m_flags != m_table->flags) {
-		ib_errf(thd, IB_LOG_LEVEL_ERROR, ER_TABLE_SCHEMA_MISMATCH,
-			 "Table flags don't match, server table has 0x%lx"
-			 " and the meta-data file has 0x%lx",
-			 (ulong) m_table->n_cols, (ulong) m_flags);
-
+		if (dict_tf_to_row_format_string(m_flags) !=
+				dict_tf_to_row_format_string(m_table->flags)) {
+			ib_errf(thd, IB_LOG_LEVEL_ERROR, ER_TABLE_SCHEMA_MISMATCH,
+				 "Table flags don't match, server table has %s"
+				 " and the meta-data file has %s",
+				(const char*)dict_tf_to_row_format_string(m_table->flags),
+				(const char*)dict_tf_to_row_format_string(m_flags));
+		} else {
+			ib_errf(thd, IB_LOG_LEVEL_ERROR, ER_TABLE_SCHEMA_MISMATCH,
+				"Table flags don't match");
+		}
 		return(DB_ERROR);
 	} else if (m_table->n_cols != m_n_cols) {
 		ib_errf(thd, IB_LOG_LEVEL_ERROR, ER_TABLE_SCHEMA_MISMATCH,
@@ -1782,12 +1788,6 @@ PageConverter::update_records(
 
 		rec_t*	rec = m_rec_iter.current();
 
-		/* FIXME: Move out of the loop */
-
-		if (rec_get_status(rec) == REC_STATUS_NODE_PTR) {
-			break;
-		}
-
 		ibool	deleted = rec_get_deleted_flag(rec, comp);
 
 		/* For the clustered index we have to adjust the BLOB
@@ -1888,6 +1888,10 @@ PageConverter::update_index_page(
 		return(DB_SUCCESS);
 	}
 
+	if (!page_is_leaf(block->frame)) {
+		return (DB_SUCCESS);
+	}
+
 	return(update_records(block));
 }
 
@@ -1969,6 +1973,7 @@ PageConverter::update_page(
 	case FIL_PAGE_TYPE_XDES:
 		err = set_current_xdes(
 			block->page.id.page_no(), get_frame(block));
+		/* Fall through. */
 	case FIL_PAGE_INODE:
 	case FIL_PAGE_TYPE_TRX_SYS:
 	case FIL_PAGE_IBUF_FREE_LIST:
@@ -2106,7 +2111,7 @@ PageConverter::operator() (
 Clean up after import tablespace failure, this function will acquire
 the dictionary latches on behalf of the transaction if the transaction
 hasn't already acquired them. */
-static	__attribute__((nonnull))
+static	MY_ATTRIBUTE((nonnull))
 void
 row_import_discard_changes(
 /*=======================*/
@@ -2151,7 +2156,7 @@ row_import_discard_changes(
 
 /*****************************************************************//**
 Clean up after import tablespace. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_cleanup(
 /*===============*/
@@ -2189,7 +2194,7 @@ row_import_cleanup(
 
 /*****************************************************************//**
 Report error during tablespace import. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_error(
 /*=============*/
@@ -2217,7 +2222,7 @@ row_import_error(
 Adjust the root page index node and leaf node segment headers, update
 with the new space id. For all the table's secondary indexes.
 @return error code */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_adjust_root_pages_of_secondary_indexes(
 /*==============================================*/
@@ -2327,7 +2332,7 @@ row_import_adjust_root_pages_of_secondary_indexes(
 /*****************************************************************//**
 Ensure that dict_sys->row_id exceeds SELECT MAX(DB_ROW_ID).
 @return error code */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_set_sys_max_row_id(
 /*==========================*/
@@ -2472,7 +2477,7 @@ row_import_cfg_read_string(
 /*********************************************************************//**
 Write the meta data (index user fields) config file.
 @return DB_SUCCESS or error code. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_cfg_read_index_fields(
 /*=============================*/
@@ -2499,7 +2504,7 @@ row_import_cfg_read_index_fields(
 
 	dict_field_t*	field = index->m_fields;
 
-	memset(field, 0x0, sizeof(*field) * n_fields);
+	std::uninitialized_fill_n(field, n_fields, dict_field_t());
 
 	for (ulint i = 0; i < n_fields; ++i, ++field) {
 		byte*		ptr = row;
@@ -2562,7 +2567,7 @@ row_import_cfg_read_index_fields(
 Read the index names and root page numbers of the indexes and set the values.
 Row format [root_page_no, len of str, str ... ]
 @return DB_SUCCESS or error code. */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_read_index_data(
 /*=======================*/
@@ -2762,7 +2767,7 @@ row_import_read_indexes(
 /*********************************************************************//**
 Read the meta data (table columns) config file. Deserialise the contents of
 dict_col_t structure, along with the column name. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_read_columns(
 /*====================*/
@@ -2895,7 +2900,7 @@ row_import_read_columns(
 /*****************************************************************//**
 Read the contents of the <tablespace>.cfg file.
 @return DB_SUCCESS or error code. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_read_v1(
 /*===============*/
@@ -3072,7 +3077,7 @@ row_import_read_v1(
 /**
 Read the contents of the <tablespace>.cfg file.
 @return DB_SUCCESS or error code. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_read_meta_data(
 /*======================*/
@@ -3115,7 +3120,7 @@ row_import_read_meta_data(
 /**
 Read the contents of the <tablename>.cfg file.
 @return DB_SUCCESS or error code. */
-static	__attribute__((nonnull, warn_unused_result))
+static	MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_import_read_cfg(
 /*================*/
@@ -3619,8 +3624,6 @@ row_import_for_mysql(
 	row_import	cfg;
 	ulint		space_flags = 0;
 
-	memset(&cfg, 0x0, sizeof(cfg));
-
 	err = row_import_read_cfg(table, trx->mysql_thd, cfg);
 
 	/* Check if the table column definitions match the contents
@@ -3952,14 +3955,7 @@ row_import_for_mysql(
 						  encrypt_info,
 						  &mtr)) {
 			mtr_commit(&mtr);
-			ib_senderrf(trx->mysql_thd, IB_LOG_LEVEL_ERROR,
-				ER_FILE_NOT_FOUND,
-				filepath, err, ut_strerr(err));
-
-			ut_free(filepath);
-			row_mysql_unlock_data_dictionary(trx);
-
-			return(row_import_cleanup(prebuilt, trx, err));
+			return(row_import_cleanup(prebuilt, trx, DB_ERROR));
 		}
 
 		mtr_commit(&mtr);

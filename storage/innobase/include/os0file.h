@@ -1,6 +1,6 @@
 /***********************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2009, Percona Inc.
 
 Portions of this file contain modifications contributed and copyrighted
@@ -96,6 +96,16 @@ typedef int	os_file_t;
 # define OS_FILE_FROM_FD(fd) fd
 
 #endif /* _WIN32 */
+
+/** Common file descriptor for file IO instrumentation with PFS
+on windows and other platforms */
+struct pfs_os_file_t
+{
+	os_file_t   m_file;
+#ifdef UNIV_PFS_IO
+	struct PSI_file *m_psi;
+#endif
+};
 
 static const os_file_t OS_FILE_CLOSED = os_file_t(~0);
 
@@ -229,32 +239,32 @@ struct Compression {
 	@param[in]	page		Page contents
 	@return true if it is a compressed page */
 	static bool is_compressed_page(const byte* page)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Check wether the compression algorithm is supported.
         @param[in]      algorithm       Compression algorithm to check
         @param[out]     type            The type that algorithm maps to
         @return DB_SUCCESS or error code */
 	static dberr_t check(const char* algorithm, Compression* type)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Validate the algorithm string.
         @param[in]      algorithm       Compression algorithm to check
         @return DB_SUCCESS or error code */
 	static dberr_t validate(const char* algorithm)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Convert to a "string".
         @param[in]      type            The compression type
         @return the string representation */
         static const char* to_string(Type type)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Convert the meta data to a std::string.
         @param[in]      meta		Page Meta data
         @return the string representation */
         static std::string to_string(const meta_t& meta)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Deserizlise the page header compression meta-data
 	@param[in]	header		Pointer to the page header
@@ -267,7 +277,7 @@ struct Compression {
         @param[in]      algorithm       Compression algorithm to check
         @return true if no algorithm requested */
 	static bool is_none(const char* algorithm)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Decompress the page data contents. Page type must be
 	FIL_PAGE_COMPRESSED, if not then the source contents are
@@ -284,7 +294,7 @@ struct Compression {
 		byte*		src,
 		byte*		dst,
 		ulint		dst_len)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Compression type */
 	Type		m_type;
@@ -387,32 +397,32 @@ struct Encryption {
 	@param[in]	page	page which need to check
 	@return true if it is a encrypted page */
 	static bool is_encrypted_page(const byte* page)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Check the encryption option and set it
 	@param[in]	option		encryption option
 	@param[in/out]	encryption	The encryption type
 	@return DB_SUCCESS or DB_UNSUPPORTED */
 	dberr_t set_algorithm(const char* option, Encryption* type)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Validate the algorithm string.
         @param[in]      algorithm       Encryption algorithm to check
         @return DB_SUCCESS or error code */
 	static dberr_t validate(const char* algorithm)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Convert to a "string".
         @param[in]      type            The encryption type
         @return the string representation */
         static const char* to_string(Type type)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Check if the string is "empty" or "none".
         @param[in]      algorithm       Encryption algorithm to check
         @return true if no algorithm requested */
 	static bool is_none(const char* algorithm)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
         /** Generate random encryption value for key and iv.
         @param[in,out]	value	Encryption value */
@@ -453,7 +463,7 @@ struct Encryption {
 		ulint			src_len,
 		byte*			dst,
 		ulint*			dst_len)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Decrypt the page data contents. Page type must be
 	FIL_PAGE_ENCRYPTED, FIL_PAGE_COMPRESSED_AND_ENCRYPTED,
@@ -472,7 +482,7 @@ struct Encryption {
 		ulint			src_len,
 		byte*			dst,
 		ulint			dst_len)
-		__attribute__((warn_unused_result));
+		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Encrypt type */
 	Type			m_type;
@@ -552,7 +562,8 @@ public:
 		:
 		m_block_size(UNIV_SECTOR_SIZE),
 		m_type(READ),
-		m_compression()
+		m_compression(),
+		m_encryption()
 	{
 		/* No op */
 	}
@@ -564,7 +575,8 @@ public:
 		:
 		m_block_size(UNIV_SECTOR_SIZE),
 		m_type(static_cast<uint16_t>(type)),
-		m_compression()
+		m_compression(),
+		m_encryption()
 	{
 		if (is_log()) {
 			disable_compression();
@@ -580,42 +592,42 @@ public:
 
 	/** @return true if ignore missing flag is set */
 	static bool ignore_missing(ulint type)
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((type & IGNORE_MISSING) == IGNORE_MISSING);
 	}
 
 	/** @return true if it is a read request */
 	bool is_read() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & READ) == READ);
 	}
 
 	/** @return true if it is a write request */
 	bool is_write() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & WRITE) == WRITE);
 	}
 
 	/** @return true if it is a redo log write */
 	bool is_log() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & LOG) == LOG);
 	}
 
 	/** @return true if the simulated AIO thread should be woken up */
 	bool is_wake() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & DO_NOT_WAKE) == 0);
 	}
 
 	/** @return true if partial read warning disabled */
 	bool is_partial_io_warning_disabled() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & DISABLE_PARTIAL_IO_WARNINGS)
 		       == DISABLE_PARTIAL_IO_WARNINGS);
@@ -629,21 +641,21 @@ public:
 
 	/** @return true if missing files should be ignored */
 	bool ignore_missing() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(ignore_missing(m_type));
 	}
 
 	/** @return true if punch hole should be used */
 	bool punch_hole() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & PUNCH_HOLE) == PUNCH_HOLE);
 	}
 
 	/** @return true if the read should be validated */
 	bool validate() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		ut_a(is_read() ^ is_write());
 
@@ -672,7 +684,7 @@ public:
 
 	/** @return the block size to use for IO */
 	ulint block_size() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(m_block_size);
 	}
@@ -715,21 +727,21 @@ public:
 	/** Get the compression algorithm.
 	@return the compression algorithm */
 	Compression compression_algorithm() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(m_compression);
 	}
 
 	/** @return true if the page should be compressed */
 	bool is_compressed() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(compression_algorithm().m_type != Compression::NONE);
 	}
 
 	/** @return true if the page read should not be transformed. */
 	bool is_compression_enabled() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & NO_COMPRESSION) == 0);
 	}
@@ -767,14 +779,14 @@ public:
 	/** Get the encryption algorithm.
 	@return the encryption algorithm */
 	Encryption encryption_algorithm() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(m_encryption);
 	}
 
 	/** @return true if the page should be encrypted. */
 	bool is_encrypted() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return(m_encryption.m_type != Encryption::NONE);
 	}
@@ -796,7 +808,7 @@ public:
 
 	/** @return true if the request is from the dblwr recovery */
 	bool is_dblwr_recover() const
-		__attribute__((warn_unused_result))
+		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & DBLWR_RECOVER) == DBLWR_RECOVER);
 	}
@@ -804,6 +816,14 @@ public:
 	/** @return true if punch hole is supported */
 	static bool is_punch_hole_supported()
 	{
+
+		/* In this debugging mode, we act as if punch hole is supported,
+		and then skip any calls to actually punch a hole here.
+		In this way, Transparent Page Compression is still being tested. */
+		DBUG_EXECUTE_IF("ignore_punch_hole",
+			return(true);
+		);
+
 #if defined(HAVE_FALLOC_PUNCH_HOLE_AND_KEEP_SIZE) || defined(_WIN32)
 		return(true);
 #else
@@ -975,7 +995,7 @@ A simple function to open or create a file.
 @param[out]	success		true if succeed, false if error
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
-os_file_t
+pfs_os_file_t
 os_file_create_simple_func(
 	const char*	name,
 	ulint		create_mode,
@@ -995,14 +1015,14 @@ A simple function to open or create a file.
 @param[out]	success		true if succeeded
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
-os_file_t
+pfs_os_file_t
 os_file_create_simple_no_error_handling_func(
 	const char*	name,
 	ulint		create_mode,
 	ulint		access_type,
 	bool		read_only,
 	bool*		success)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Tries to disable OS caching on an opened file descriptor.
 @param[in]	fd		file descriptor to alter
@@ -1032,7 +1052,7 @@ Opens an existing file or creates a new.
 @param[in]	success		true if succeeded
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
-os_file_t
+pfs_os_file_t
 os_file_create_func(
 	const char*	name,
 	ulint		create_mode,
@@ -1040,7 +1060,7 @@ os_file_create_func(
 	ulint		type,
 	bool		read_only,
 	bool*		success)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Deletes a file. The file has to be closed before calling this.
 @param[in]	name		file path as a null-terminated string
@@ -1085,7 +1105,9 @@ extern mysql_pfs_key_t	innodb_temp_file_key;
 various file I/O operations with performance schema.
 1) register_pfs_file_open_begin() and register_pfs_file_open_end() are
 used to register file creation, opening, closing and renaming.
-2) register_pfs_file_io_begin() and register_pfs_file_io_end() are
+2) register_pfs_file_rename_begin() and  register_pfs_file_rename_end()
+are used to register file renaming
+3) register_pfs_file_io_begin() and register_pfs_file_io_end() are
 used to register actual file read, write and flush
 3) register_pfs_file_close_begin() and register_pfs_file_close_end()
 are used to register file deletion operations*/
@@ -1093,29 +1115,45 @@ are used to register file deletion operations*/
 				      src_file, src_line)		\
 do {									\
 	locker = PSI_FILE_CALL(get_thread_file_name_locker)(		\
-		state, key, op, name, &locker);				\
+		state, key.m_value, op, name, &locker);			\
 	if (locker != NULL) {						\
 		PSI_FILE_CALL(start_file_open_wait)(			\
-			locker, src_file, src_line);			\
+			locker, src_file, static_cast<uint>(src_line));	\
 	}								\
 } while (0)
 
-# define register_pfs_file_open_end(locker, file)			\
+# define register_pfs_file_open_end(locker, file, result)		\
 do {									\
 	if (locker != NULL) {						\
-		PSI_FILE_CALL(end_file_open_wait_and_bind_to_descriptor)(\
-			locker, file);					\
+		file.m_psi = PSI_FILE_CALL(				\
+		end_file_open_wait)(					\
+			locker, result);				\
 	}								\
 } while (0)
+
+# define register_pfs_file_rename_begin(state, locker, key, op, name,	\
+					src_file, src_line)             \
+	register_pfs_file_open_begin(					\
+		state, locker, key, op, name,				\
+		src_file, static_cast<uint>(src_line))			\
+
+# define register_pfs_file_rename_end(locker, from, to, result)		\
+do {									\
+	if (locker != NULL) {						\
+		 PSI_FILE_CALL(						\
+			end_file_rename_wait)(				\
+			locker, from, to, result);			\
+	}								\
+}while(0)
 
 # define register_pfs_file_close_begin(state, locker, key, op, name,	\
-				      src_file, src_line)		\
+				       src_file, src_line)		\
 do {									\
 	locker = PSI_FILE_CALL(get_thread_file_name_locker)(		\
-		state, key, op, name, &locker);				\
+		state, key.m_value, op, name, &locker);			\
 	if (locker != NULL) {						\
 		PSI_FILE_CALL(start_file_close_wait)(			\
-			locker, src_file, src_line);			\
+			locker, src_file, static_cast<uint>(src_line));	\
 	}								\
 } while (0)
 
@@ -1130,11 +1168,12 @@ do {									\
 # define register_pfs_file_io_begin(state, locker, file, count, op,	\
 				    src_file, src_line)			\
 do {									\
-	locker = PSI_FILE_CALL(get_thread_file_descriptor_locker)(	\
-		state, file, op);					\
+	locker = PSI_FILE_CALL(get_thread_file_stream_locker)(		\
+		state, file.m_psi, op);					\
 	if (locker != NULL) {						\
 		PSI_FILE_CALL(start_file_wait)(				\
-			locker, count, src_file, src_line);		\
+			locker, count,					\
+			src_file, static_cast<uint>(src_line));		\
 	}								\
 } while (0)
 
@@ -1157,6 +1196,7 @@ os_file_rename
 os_aio
 os_file_read
 os_file_read_no_error_handling
+os_file_read_no_error_handling_int_fd
 os_file_write
 
 The wrapper functions have the prefix of "innodb_". */
@@ -1177,7 +1217,7 @@ The wrapper functions have the prefix of "innodb_". */
 		key, name, create_mode, access,				\
 		read_only, success, __FILE__, __LINE__)
 
-# define os_file_close(file)						\
+# define os_file_close_pfs(file)						\
 	pfs_os_file_close_func(file, __FILE__, __LINE__)
 
 # define os_aio(type, mode, name, file, buf, offset,			\
@@ -1186,18 +1226,27 @@ The wrapper functions have the prefix of "innodb_". */
 			n, read_only, message1, message2,		\
 			__FILE__, __LINE__)
 
-# define os_file_read(type, file, buf, offset, n)			\
+# define os_file_read_pfs(type, file, buf, offset, n)			\
 	pfs_os_file_read_func(type, file, buf, offset, n, __FILE__, __LINE__)
 
-# define os_file_read_no_error_handling(type, file, buf, offset, n, o)	\
+# define os_file_read_no_error_handling_pfs(type, file, buf, offset, n, o)	\
 	pfs_os_file_read_no_error_handling_func(			\
 		type, file, buf, offset, n, o, __FILE__, __LINE__)
 
-# define os_file_write(type, name, file, buf, offset, n)	\
+# define os_file_read_no_error_handling_int_fd(                         \
+		type, file, buf, offset, n, o)				\
+	pfs_os_file_read_no_error_handling_int_fd_func(                 \
+		type, file, buf, offset, n, o, __FILE__, __LINE__)
+
+# define os_file_write_pfs(type, name, file, buf, offset, n)	\
 	pfs_os_file_write_func(type, name, file, buf, offset,	\
 			       n, __FILE__, __LINE__)
 
-# define os_file_flush(file)						\
+# define os_file_write_int_fd(type, name, file, buf, offset, n)		\
+	pfs_os_file_write_int_fd_func(type, name, file, buf, offset,	\
+				n, __FILE__, __LINE__)
+
+# define os_file_flush_pfs(file)						\
 	pfs_os_file_flush_func(file, __FILE__, __LINE__)
 
 # define os_file_rename(key, oldpath, newpath)				\
@@ -1208,6 +1257,8 @@ The wrapper functions have the prefix of "innodb_". */
 
 # define os_file_delete_if_exists(key, name, exist)			\
 	pfs_os_file_delete_if_exists_func(key, name, exist, __FILE__, __LINE__)
+
+
 
 /** NOTE! Please use the corresponding macro os_file_create_simple(),
 not directly this function!
@@ -1225,7 +1276,7 @@ os_file_create_simple() which opens or creates a file.
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
 UNIV_INLINE
-os_file_t
+pfs_os_file_t
 pfs_os_file_create_simple_func(
 	mysql_pfs_key_t key,
 	const char*	name,
@@ -1235,7 +1286,7 @@ pfs_os_file_create_simple_func(
 	bool*		success,
 	const char*	src_file,
 	ulint		src_line)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** NOTE! Please use the corresponding macro
 os_file_create_simple_no_error_handling(), not directly this function!
@@ -1256,7 +1307,7 @@ monitor file creation/open.
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
 UNIV_INLINE
-os_file_t
+pfs_os_file_t
 pfs_os_file_create_simple_no_error_handling_func(
 	mysql_pfs_key_t key,
 	const char*	name,
@@ -1266,7 +1317,7 @@ pfs_os_file_create_simple_no_error_handling_func(
 	bool*		success,
 	const char*	src_file,
 	ulint		src_line)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** NOTE! Please use the corresponding macro os_file_create(), not directly
 this function!
@@ -1289,7 +1340,7 @@ Add instrumentation to monitor file creation/open.
 @return own: handle to the file, not defined if error, error number
 	can be retrieved with os_file_get_last_error */
 UNIV_INLINE
-os_file_t
+pfs_os_file_t
 pfs_os_file_create_func(
 	mysql_pfs_key_t key,
 	const char*	name,
@@ -1300,7 +1351,7 @@ pfs_os_file_create_func(
 	bool*		success,
 	const char*	src_file,
 	ulint		src_line)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** NOTE! Please use the corresponding macro os_file_close(), not directly
 this function!
@@ -1312,7 +1363,7 @@ A performance schema instrumented wrapper function for os_file_close().
 UNIV_INLINE
 bool
 pfs_os_file_close_func(
-	os_file_t	file,
+	pfs_os_file_t	file,
 	const char*	src_file,
 	ulint		src_line);
 
@@ -1332,7 +1383,7 @@ UNIV_INLINE
 dberr_t
 pfs_os_file_read_func(
 	IORequest&	type,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	void*		buf,
 	os_offset_t	offset,
 	ulint		n,
@@ -1357,13 +1408,40 @@ UNIV_INLINE
 dberr_t
 pfs_os_file_read_no_error_handling_func(
 	IORequest&	type,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	void*		buf,
 	os_offset_t	offset,
 	ulint		n,
 	ulint*		o,
 	const char*	src_file,
 	ulint		src_line);
+
+/** NOTE! Please use the corresponding macro
+os_file_read_no_error_handling_int_fd(), not directly this function!
+This is the performance schema instrumented wrapper function for
+os_file_read_no_error_handling_int_fd_func() which requests a
+synchronous  read operation on files with int type descriptors.
+@param[in, out] type            IO request context
+@param[in]      file            Open file handle
+@param[out]     buf             buffer where to read
+@param[in]      offset          file offset where to read
+@param[in]      n               number of bytes to read
+@param[out]     o               number of bytes actually read
+@param[in]      src_file        file name where func invoked
+@param[in]      src_line        line where the func invoked
+@return DB_SUCCESS if request was successful */
+
+UNIV_INLINE
+dberr_t
+pfs_os_file_read_no_error_handling_int_fd_func(
+        IORequest&      type,
+        int             file,
+        void*           buf,
+        os_offset_t     offset,
+        ulint           n,
+        ulint*          o,
+        const char*     src_file,
+        ulint           src_line);
 
 /** NOTE! Please use the corresponding macro os_aio(), not directly this
 function!
@@ -1393,7 +1471,7 @@ pfs_os_aio_func(
 	IORequest&	type,
 	ulint		mode,
 	const char*	name,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	void*		buf,
 	os_offset_t	offset,
 	ulint		n,
@@ -1422,12 +1500,39 @@ dberr_t
 pfs_os_file_write_func(
 	IORequest&	type,
 	const char*	name,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	const void*	buf,
 	os_offset_t	offset,
 	ulint		n,
 	const char*	src_file,
 	ulint		src_line);
+
+/** NOTE! Please use the corresponding macro os_file_write(), not
+directly this function!
+This is the performance schema instrumented wrapper function for
+os_file_write() which requests a synchronous write operation
+on files with int type descriptors.
+@param[in, out] type            IO request context
+@param[in]      name            Name of the file or path as NUL terminated
+				string
+@param[in]      file            Open file handle
+@param[out]     buf             buffer where to read
+@param[in]      offset          file offset where to read
+@param[in]      n		number of bytes to read
+@param[in]      src_file        file name where func invoked
+@param[in]      src_line        line where the func invoked
+@return DB_SUCCESS if request was successful */
+UNIV_INLINE
+dberr_t
+pfs_os_file_write_int_fd_func(
+        IORequest&      type,
+        const char*     name,
+        int		file,
+        const void*     buf,
+        os_offset_t     offset,
+        ulint           n,
+        const char*     src_file,
+        ulint           src_line);
 
 /** NOTE! Please use the corresponding macro os_file_flush(), not directly
 this function!
@@ -1441,7 +1546,7 @@ Flushes the write buffers of a given file to the disk.
 UNIV_INLINE
 bool
 pfs_os_file_flush_func(
-	os_file_t	file,
+	pfs_os_file_t	file,
 	const char*	src_file,
 	ulint		src_line);
 
@@ -1521,23 +1626,29 @@ to original un-instrumented file I/O APIs */
 	os_file_create_simple_no_error_handling_func(			\
 		name, create_mode, access, read_only, success)
 
-# define os_file_close(file)	os_file_close_func(file)
+# define os_file_close_pfs(file)	os_file_close_func(file)
 
 # define os_aio(type, mode, name, file, buf, offset,			\
 		n, read_only, message1, message2)			\
 	os_aio_func(type, mode, name, file, buf, offset,		\
 		n, read_only, message1, message2)
 
-# define os_file_read(type, file, buf, offset, n)			\
+# define os_file_read_pfs(type, file, buf, offset, n)			\
 	os_file_read_func(type, file, buf, offset, n)
 
-# define os_file_read_no_error_handling(type, file, buf, offset, n, o)	\
+# define os_file_read_no_error_handling_pfs(type, file, buf, offset, n, o)	\
 	os_file_read_no_error_handling_func(type, file, buf, offset, n, o)
 
-# define os_file_write(type, name, file, buf, offset, n)		\
+# define os_file_read_no_error_handling_int_fd(type, file, buf, offset, n, o)  \
+	os_file_read_no_error_handling_func(type, file, buf, offset, n, o)
+
+# define os_file_write_pfs(type, name, file, buf, offset, n)		\
 	os_file_write_func(type, name, file, buf, offset, n)
 
-# define os_file_flush(file)	os_file_flush_func(file)
+# define os_file_write_int_fd(type, name, file, buf, offset, n)            \
+	os_file_write_func(type, name, file, buf, offset, n)
+
+# define os_file_flush_pfs(file)	os_file_flush_func(file)
 
 # define os_file_rename(key, oldpath, newpath)				\
 	os_file_rename_func(oldpath, newpath)
@@ -1548,6 +1659,43 @@ to original un-instrumented file I/O APIs */
 	os_file_delete_if_exists_func(name, exist)
 
 #endif	/* UNIV_PFS_IO */
+
+#ifdef UNIV_PFS_IO
+	#define os_file_close(file) os_file_close_pfs(file)
+#else
+	#define os_file_close(file) os_file_close_pfs((file).m_file)
+#endif
+
+#ifdef UNIV_PFS_IO
+	#define os_file_read(type, file, buf, offset, n)                \
+		os_file_read_pfs(type, file, buf, offset, n)
+#else
+	#define os_file_read(type, file, buf, offset, n)                \
+                os_file_read_pfs(type, file.m_file, buf, offset, n)
+#endif
+
+#ifdef UNIV_PFS_IO
+	#define os_file_flush(file)	os_file_flush_pfs(file)
+#else
+	#define os_file_flush(file)	os_file_flush_pfs(file.m_file)
+#endif
+
+#ifdef UNIV_PFS_IO
+	#define os_file_write(type, name, file, buf, offset, n)         \
+		os_file_write_pfs(type, name, file, buf, offset, n)
+#else
+	#define os_file_write(type, name, file, buf, offset, n)         \
+                os_file_write_pfs(type, name, file.m_file, buf, offset, n)
+#endif
+
+#ifdef UNIV_PFS_IO
+	#define os_file_read_no_error_handling(type, file, buf, offset, n, o)  \
+		 os_file_read_no_error_handling_pfs(type, file, buf, offset, n, o)
+#else
+	#define os_file_read_no_error_handling(type, file, buf, offset, n, o) \
+                 os_file_read_no_error_handling_pfs(			      \
+			type, file.m_file, buf, offset, n, o)
+#endif
 
 #ifdef UNIV_HOTBACKUP
 /** Closes a file handle.
@@ -1564,15 +1712,15 @@ os_file_close_no_error_handling(os_file_t file);
 os_file_size_t
 os_file_get_size(
 	const char*	filename)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Gets a file size.
 @param[in]	file		handle to a file
 @return file size, or (os_offset_t) -1 on failure */
 os_offset_t
 os_file_get_size(
-	os_file_t	file)
-	__attribute__((warn_unused_result));
+	pfs_os_file_t	file)
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Write the specified number of zeros to a newly created file.
 @param[in]	name		name of the file or path as a null-terminated
@@ -1584,10 +1732,10 @@ os_file_get_size(
 bool
 os_file_set_size(
 	const char*	name,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	os_offset_t	size,
 	bool		read_only)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Truncates a file at its current position.
 @param[in/out]	file	file to be truncated
@@ -1605,7 +1753,7 @@ preserved is smaller or equal than current size of file.
 bool
 os_file_truncate(
 	const char*	pathname,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	os_offset_t	size);
 
 /** NOTE! Use the corresponding macro os_file_flush(), not directly this
@@ -1644,7 +1792,7 @@ os_file_read_func(
 	void*		buf,
 	os_offset_t	offset,
 	ulint		n)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Rewind file to its start, read at most size - 1 bytes from it to str, and
 NUL-terminate str. All errors are silently ignored. This function is
@@ -1677,7 +1825,7 @@ os_file_read_no_error_handling_func(
 	os_offset_t	offset,
 	ulint		n,
 	ulint*		o)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** NOTE! Use the corresponding macro os_file_write(), not directly this
 function!
@@ -1696,7 +1844,7 @@ os_file_write_func(
 	const void*	buf,
 	os_offset_t	offset,
 	ulint		n)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Check the existence and type of the given file.
 @param[in]	path		pathname of the file
@@ -1799,7 +1947,7 @@ os_aio_func(
 	IORequest&	type,
 	ulint		mode,
 	const char*	name,
-	os_file_t	file,
+	pfs_os_file_t	file,
 	void*		buf,
 	os_offset_t	offset,
 	ulint		n,
@@ -1894,6 +2042,11 @@ os_file_get_status(
 	bool		read_only);
 
 #if !defined(UNIV_HOTBACKUP)
+/** return one of the tmpdir path
+@return tmporary dir*/
+char *innobase_mysql_tmpdir(void);
+
+
 /** Creates a temporary file in the location specified by the parameter
 path. If the path is NULL then it will be created on --tmpdir location.
 This function is defined in ha_innodb.cc.
@@ -1934,7 +2087,7 @@ os_file_punch_hole(
 	os_file_t	fh,
 	os_offset_t	off,
 	os_offset_t	len)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Check if the file system supports sparse files.
 
@@ -1950,8 +2103,8 @@ Note: On Windows we use the name and on Unices we use the file handle.
 bool
 os_is_sparse_file_supported(
 	const char*	path,
-	os_file_t	fh)
-	__attribute__((warn_unused_result));
+	pfs_os_file_t	fh)
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Decompress the page data contents. Page type must be FIL_PAGE_COMPRESSED, if
 not then the source contents are left unchanged and DB_SUCCESS is returned.
@@ -1968,7 +2121,7 @@ os_file_decompress_page(
 	byte*		src,
 	byte*		dst,
 	ulint		dst_len)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Normalizes a directory path for the current OS:
 On Windows, we convert '/' to '\', else we convert '\' to '/'.

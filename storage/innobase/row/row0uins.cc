@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1997, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1997, 2018, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -46,6 +46,7 @@ Created 2/25/1997 Heikki Tuuri
 #include "que0que.h"
 #include "ibuf0ibuf.h"
 #include "log0log.h"
+#include "fil0fil.h"
 
 /*************************************************************************
 IMPORTANT NOTE: Any operation that generates redo MUST check that there
@@ -61,7 +62,7 @@ introduced where a call to log_free_check() is bypassed. */
 Removes a clustered index record. The pcur in node was positioned on the
 record, now it is detached.
 @return DB_SUCCESS or DB_OUT_OF_FILE_SPACE */
-static  __attribute__((nonnull, warn_unused_result))
+static  MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_undo_ins_remove_clust_rec(
 /*==========================*/
@@ -180,7 +181,7 @@ func_exit:
 /***************************************************************//**
 Removes a secondary index entry if found.
 @return DB_SUCCESS, DB_FAIL, or DB_OUT_OF_FILE_SPACE */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_undo_ins_remove_sec_low(
 /*========================*/
@@ -199,7 +200,6 @@ row_undo_ins_remove_sec_low(
 	ibool			modify_leaf = false;
 
 	log_free_check();
-	memset(&pcur, 0, sizeof(pcur));
 
 	mtr_start(&mtr);
 	mtr.set_named_space(index->space);
@@ -220,9 +220,9 @@ row_undo_ins_remove_sec_low(
 
 	if (dict_index_is_spatial(index)) {
 		if (mode & BTR_MODIFY_LEAF) {
-			btr_pcur_get_btr_cur(&pcur)->thr = thr;
 			mode |= BTR_RTREE_DELETE_MARK;
 		}
+		btr_pcur_get_btr_cur(&pcur)->thr = thr;
 		mode |= BTR_RTREE_UNDO_INS;
 	}
 
@@ -278,7 +278,7 @@ func_exit_no_pcur:
 Removes a secondary index entry from the index if found. Tries first
 optimistic, then pessimistic descent down the tree.
 @return DB_SUCCESS or DB_OUT_OF_FILE_SPACE */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_undo_ins_remove_sec(
 /*====================*/
@@ -354,6 +354,10 @@ row_undo_ins_parse_undo_rec(
 close_table:
 		dict_table_close(node->table, dict_locked, FALSE);
 		node->table = NULL;
+	} else if (fil_space_is_being_truncated(node->table->space)) {
+
+		dict_table_close(node->table, dict_locked, FALSE);
+		node->table = NULL;
 	} else {
 		clust_index = dict_table_get_first_index(node->table);
 
@@ -381,7 +385,7 @@ close_table:
 /***************************************************************//**
 Removes secondary index records.
 @return DB_SUCCESS or DB_OUT_OF_FILE_SPACE */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 row_undo_ins_remove_sec_rec(
 /*========================*/

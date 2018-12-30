@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2015, 2017, Oracle and/or its affiliates. All rights reserved.
 
  This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -22,11 +22,25 @@
 #pragma warning(push, 0)
 #endif // WIN32
 
-#include "mysqlx.pb.h"
-
+#include <google/protobuf/message.h>
+#include <google/protobuf/repeated_field.h>
+#include <google/protobuf/text_format.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/tokenizer.h>
+#include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/wire_format_lite.h>
 #include <google/protobuf/wire_format_lite_inl.h>
+#include <google/protobuf/dynamic_message.h>
+
+#include "mysqlx_connection.pb.h"
+#include "mysqlx_crud.pb.h"
+#include "mysqlx_expect.pb.h"
+#include "mysqlx_notice.pb.h"
+#include "mysqlx_resultset.pb.h"
+#include "mysqlx_session.pb.h"
+#include "mysqlx_sql.pb.h"
+#include "mysqlx.pb.h"
+
 
 #ifdef WIN32
 #pragma warning(pop)

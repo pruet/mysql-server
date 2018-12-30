@@ -1,3 +1,21 @@
+#
+# Bug #23210850: VERSION_TOKEN better protected
+#
+# Define a UDF before installing the plugin
+create function version_tokens_show returns string soname 'version_token.so';
+SELECT version_tokens_show();
+ERROR HY000: Can't initialize function 'version_tokens_show'; version_token plugin is not installed.
+# Testing installing the plugin twice while there's a UDF defined
+INSTALL PLUGIN version_tokens SONAME 'version_token.so';
+UNINSTALL PLUGIN version_tokens;
+Warnings:
+Warning	1620	Plugin is busy and will be uninstalled on shutdown
+INSTALL PLUGIN version_tokens SONAME 'version_token.so';
+UNINSTALL PLUGIN version_tokens;
+Warnings:
+Warning	1620	Plugin is busy and will be uninstalled on shutdown
+# Should not crash when unloading the so through removing the UDF
+drop function version_tokens_show;
 INSTALL PLUGIN version_tokens SONAME 'version_token.so';
 create function version_tokens_set returns string soname 'version_token.so';
 create function version_tokens_show returns string soname 'version_token.so';
@@ -196,6 +214,27 @@ ERROR 42000: Version token token100 not found.
 select 1;
 1
 1
+# Tests related to locking
+# Connection: vtcon1 
+SELECT version_tokens_set("a=aa;b=bb;c=cc");
+version_tokens_set("a=aa;b=bb;c=cc")
+3 version tokens set.
+set @@version_tokens_session= "a=aa";
+SELECT sleep(6); # sleep for 6 seconds in background.;
+# Connection: vtcon2
+SELECT version_tokens_lock_exclusive("b",20);
+version_tokens_lock_exclusive("b",20)
+1
+# Connection: vtcon3
+SELECT version_tokens_lock_exclusive("a",20);
+version_tokens_lock_exclusive("a",20)
+1
+SELECT version_tokens_unlock();
+version_tokens_unlock()
+1
+# Connection: vtcon1
+sleep(6)
+0
 
 UNINSTALL PLUGIN version_tokens;
 Warnings:

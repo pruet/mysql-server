@@ -1,4 +1,4 @@
-/* Copyright (c) 2000, 2015, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2000, 2017, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -102,9 +102,9 @@ typedef struct st_mysql_stmt_extension
     1  could not initialize environment (out of memory or thread keys)
 */
 
-int STDCALL mysql_server_init(int argc __attribute__((unused)),
-			      char **argv __attribute__((unused)),
-			      char **groups __attribute__((unused)))
+int STDCALL mysql_server_init(int argc MY_ATTRIBUTE((unused)),
+			      char **argv MY_ATTRIBUTE((unused)),
+			      char **groups MY_ATTRIBUTE((unused)))
 {
   int result= 0;
   if (!mysql_client_init)
@@ -123,7 +123,7 @@ int STDCALL mysql_server_init(int argc __attribute__((unused)),
     if (!mysql_port)
     {
       char *env;
-      struct servent *serv_ptr __attribute__((unused));
+      struct servent *serv_ptr MY_ATTRIBUTE((unused));
 
       mysql_port = MYSQL_PORT;
 
@@ -251,7 +251,7 @@ append_wild(char *to, char *end, const char *wild)
 **************************************************************************/
 
 void STDCALL
-mysql_debug(const char *debug __attribute__((unused)))
+mysql_debug(const char *debug MY_ATTRIBUTE((unused)))
 {
 #ifndef DBUG_OFF
   char	*env;
@@ -518,7 +518,7 @@ typedef struct st_default_local_infile
 */
 
 static int default_local_infile_init(void **ptr, const char *filename,
-             void *userdata __attribute__ ((unused)))
+             void *userdata MY_ATTRIBUTE ((unused)))
 {
   default_local_infile_data *data;
   char tmp_name[FN_REFLEN];
@@ -2155,8 +2155,18 @@ static my_bool execute(MYSQL_STMT *stmt, char *packet, ulong length)
   {
     if (mysql->server_status & SERVER_STATUS_CURSOR_EXISTS)
       mysql->server_status&= ~SERVER_STATUS_CURSOR_EXISTS;
-
-    if (!res && (stmt->flags & CURSOR_TYPE_READ_ONLY))
+    /*
+      After having read the query result, we need to make sure that the client
+      does not end up into a hang waiting for the server to send a packet.
+      If the CURSOR_TYPE_READ_ONLY flag is set, we would want to perform the
+      additional packet read mainly for prepared statements involving SELECT
+      queries. For SELECT queries, the result format would either be
+      <Metadata><OK> or <Metadata><rows><OK>. We would have read the metadata
+      by now and have the field_count populated. The check for field_count will
+      help determine if we can expect an additional packet from the server.
+    */
+    if (!res && (stmt->flags & CURSOR_TYPE_READ_ONLY) &&
+        mysql->field_count != 0)
     {
       /*
         server can now respond with a cursor - then the respond will be
@@ -2440,15 +2450,15 @@ stmt_read_row_from_cursor(MYSQL_STMT *stmt, unsigned char **row)
 */
 
 static int
-stmt_read_row_no_data(MYSQL_STMT *stmt  __attribute__((unused)),
-                      unsigned char **row  __attribute__((unused)))
+stmt_read_row_no_data(MYSQL_STMT *stmt  MY_ATTRIBUTE((unused)),
+                      unsigned char **row  MY_ATTRIBUTE((unused)))
 {
   return MYSQL_NO_DATA;
 }
 
 static int
-stmt_read_row_no_result_set(MYSQL_STMT *stmt  __attribute__((unused)),
-                      unsigned char **row  __attribute__((unused)))
+stmt_read_row_no_result_set(MYSQL_STMT *stmt  MY_ATTRIBUTE((unused)),
+                      unsigned char **row  MY_ATTRIBUTE((unused)))
 {
   set_stmt_error(stmt, CR_NO_RESULT_SET, unknown_sqlstate, NULL);
   return 1;
@@ -3807,7 +3817,7 @@ static void fetch_result_short(MYSQL_BIND *param, MYSQL_FIELD *field,
 }
 
 static void fetch_result_int32(MYSQL_BIND *param,
-                               MYSQL_FIELD *field __attribute__((unused)),
+                               MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                                uchar **row)
 {
   my_bool field_is_unsigned= MY_TEST(field->flags & UNSIGNED_FLAG);
@@ -3818,7 +3828,7 @@ static void fetch_result_int32(MYSQL_BIND *param,
 }
 
 static void fetch_result_int64(MYSQL_BIND *param,
-                               MYSQL_FIELD *field __attribute__((unused)),
+                               MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                                uchar **row)
 {
   my_bool field_is_unsigned= MY_TEST(field->flags & UNSIGNED_FLAG);
@@ -3829,7 +3839,7 @@ static void fetch_result_int64(MYSQL_BIND *param,
 }
 
 static void fetch_result_float(MYSQL_BIND *param,
-                               MYSQL_FIELD *field __attribute__((unused)),
+                               MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                                uchar **row)
 {
   float value;
@@ -3839,7 +3849,7 @@ static void fetch_result_float(MYSQL_BIND *param,
 }
 
 static void fetch_result_double(MYSQL_BIND *param,
-                                MYSQL_FIELD *field __attribute__((unused)),
+                                MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                                 uchar **row)
 {
   double value;
@@ -3849,7 +3859,7 @@ static void fetch_result_double(MYSQL_BIND *param,
 }
 
 static void fetch_result_time(MYSQL_BIND *param,
-                              MYSQL_FIELD *field __attribute__((unused)),
+                              MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                               uchar **row)
 {
   MYSQL_TIME *tm= (MYSQL_TIME *)param->buffer;
@@ -3857,7 +3867,7 @@ static void fetch_result_time(MYSQL_BIND *param,
 }
 
 static void fetch_result_date(MYSQL_BIND *param,
-                              MYSQL_FIELD *field __attribute__((unused)),
+                              MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                               uchar **row)
 {
   MYSQL_TIME *tm= (MYSQL_TIME *)param->buffer;
@@ -3865,7 +3875,7 @@ static void fetch_result_date(MYSQL_BIND *param,
 }
 
 static void fetch_result_datetime(MYSQL_BIND *param,
-                                  MYSQL_FIELD *field __attribute__((unused)),
+                                  MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                                   uchar **row)
 {
   MYSQL_TIME *tm= (MYSQL_TIME *)param->buffer;
@@ -3873,7 +3883,7 @@ static void fetch_result_datetime(MYSQL_BIND *param,
 }
 
 static void fetch_result_bin(MYSQL_BIND *param,
-                             MYSQL_FIELD *field __attribute__((unused)),
+                             MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                              uchar **row)
 {
   ulong length= net_field_length(row);
@@ -3885,7 +3895,7 @@ static void fetch_result_bin(MYSQL_BIND *param,
 }
 
 static void fetch_result_str(MYSQL_BIND *param,
-                             MYSQL_FIELD *field __attribute__((unused)),
+                             MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
                              uchar **row)
 {
   ulong length= net_field_length(row);
@@ -3906,7 +3916,7 @@ static void fetch_result_str(MYSQL_BIND *param,
 */
 
 static void skip_result_fixed(MYSQL_BIND *param,
-			      MYSQL_FIELD *field __attribute__((unused)),
+			      MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
 			      uchar **row)
 
 {
@@ -3914,8 +3924,8 @@ static void skip_result_fixed(MYSQL_BIND *param,
 }
 
 
-static void skip_result_with_length(MYSQL_BIND *param __attribute__((unused)),
-				    MYSQL_FIELD *field __attribute__((unused)),
+static void skip_result_with_length(MYSQL_BIND *param MY_ATTRIBUTE((unused)),
+				    MYSQL_FIELD *field MY_ATTRIBUTE((unused)),
 				    uchar **row)
 
 {
@@ -3924,7 +3934,7 @@ static void skip_result_with_length(MYSQL_BIND *param __attribute__((unused)),
 }
 
 
-static void skip_result_string(MYSQL_BIND *param __attribute__((unused)),
+static void skip_result_string(MYSQL_BIND *param MY_ATTRIBUTE((unused)),
 			       MYSQL_FIELD *field,
 			       uchar **row)
 
@@ -4852,10 +4862,14 @@ my_bool STDCALL mysql_stmt_close(MYSQL_STMT *stmt)
         mysql->status= MYSQL_STATUS_READY;
       }
       int4store(buff, stmt->stmt_id);
-      if ((rc= stmt_command(mysql, COM_STMT_CLOSE, buff, 4, stmt)))
-      {
-        set_stmt_errmsg(stmt, &mysql->net);
-      }
+      /*
+        If stmt_command failed, it would have already raised
+        error using set_mysql_error. Caller should use
+        mysql_error() or mysql_errno() to find out details.
+        Memory allocated for stmt will be released regardless
+        of the error.
+      */
+      rc= stmt_command(mysql, COM_STMT_CLOSE, buff, 4, stmt);
     }
   }
 

@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2014, 2015, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, 2018, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include "mysql_connection_options.h"
 #include "abstract_program.h"
 #include <mysys_err.h>
+#include "caching_sha2_passwordopt-vars.h"
 
 using Mysql::Tools::Base::Abstract_program;
 using namespace Mysql::Tools::Base::Options;
@@ -48,19 +49,6 @@ Mysql_connection_options::Mysql_connection_options(Abstract_program *program)
   }
 
   this->add_provider(&this->m_ssl_options_provider);
-}
-
-Mysql_connection_options::~Mysql_connection_options()
-{
-  my_boost::mutex::scoped_lock lock(m_connection_mutex);
-  for (vector<MYSQL*>::iterator it= this->m_allocated_connections.begin();
-    it != this->m_allocated_connections.end(); it++)
-  {
-    if (*it)
-    {
-      mysql_close(*it);
-    }
-  }
 }
 
 void Mysql_connection_options::create_options()
@@ -125,17 +113,16 @@ void Mysql_connection_options::create_options()
     "Directory for client-side plugins.");
   this->create_new_option(&this->m_default_auth, "default_auth",
     "Default authentication client-side plugin to use.");
+  this->create_new_option(&this->m_server_public_key, "server_public_key_path",
+                          "Path to file containing server public key");
+  this->create_new_option(&this->m_get_server_public_key,
+                          "get-server-public-key",
+                          "Get public key from server");
 }
 
 MYSQL* Mysql_connection_options::create_connection()
 {
-  MYSQL *connection = new MYSQL;
-
-  {
-  my_boost::mutex::scoped_lock lock(m_connection_mutex);
-  this->m_allocated_connections.push_back(connection);
-  }
-  mysql_init(connection);
+  MYSQL *connection= mysql_init(NULL);
   if (this->m_compress)
     mysql_options(connection, MYSQL_OPT_COMPRESS, NullS);
 
@@ -176,6 +163,19 @@ MYSQL* Mysql_connection_options::create_connection()
   mysql_options4(connection, MYSQL_OPT_CONNECT_ATTR_ADD,
                   "program_name", this->m_program->get_name().c_str());
 
+#if !defined(HAVE_YASSL)
+  if (this->m_server_public_key.has_value())
+  {
+    opt_server_public_key=
+      const_cast <char *> (this->m_server_public_key.value().c_str());
+  }
+
+  opt_get_server_public_key= this->m_get_server_public_key ? TRUE : FALSE;
+#endif /* !HAVE_YASSL */
+
+  set_server_public_key(connection);
+  set_get_server_public_key_option(connection);
+
   if (!mysql_real_connect(connection,
     this->get_null_or_string(this->m_host),
     this->get_null_or_string(this->m_user),
@@ -184,6 +184,7 @@ MYSQL* Mysql_connection_options::create_connection()
     this->get_null_or_string(this->m_mysql_unix_port), 0))
   {
     this->db_error(connection, "while connecting to the MySQL server");
+    mysql_close(connection);
     return NULL;
   }
 
@@ -218,14 +219,14 @@ const char* Mysql_connection_options::get_null_or_string(
 
 #ifdef _WIN32
 void Mysql_connection_options::pipe_protocol_callback(
-  char* not_used __attribute__((unused)))
+  char* not_used MY_ATTRIBUTE((unused)))
 {
   this->m_protocol= MYSQL_PROTOCOL_PIPE;
 }
 #endif
 
 void Mysql_connection_options::protocol_callback(
-  char* not_used __attribute__((unused)))
+  char* not_used MY_ATTRIBUTE((unused)))
 {
   this->m_protocol=
     find_type_or_exit(this->m_protocol_string.value().c_str(),
@@ -233,7 +234,7 @@ void Mysql_connection_options::protocol_callback(
 }
 
 void Mysql_connection_options::secure_auth_callback(
-  char* not_used __attribute__((unused)))
+  char* not_used MY_ATTRIBUTE((unused)))
 {
   /* --secure-auth is a zombie option. */
   if (!this->m_secure_auth)

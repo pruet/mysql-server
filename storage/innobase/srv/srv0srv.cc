@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2018, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, 2009 Google Inc.
 Copyright (c) 2009, Percona Inc.
 
@@ -73,6 +73,10 @@ Created 10/8/1995 Heikki Tuuri
 #include "ut0crc32.h"
 #include "ut0mem.h"
 
+#ifndef UNIV_PFS_THREAD
+#define create_thd(x,y,z,PFS_KEY)	create_thd(x,y,z,PFS_NOT_INSTRUMENTED.m_value)
+#endif /* UNIV_PFS_THREAD */
+
 /* The following is the maximum allowed duration of a lock wait. */
 ulint	srv_fatal_semaphore_wait_threshold = 600;
 
@@ -116,7 +120,17 @@ any of the rollback-segment based on configuration used. */
 ulint	srv_undo_tablespaces_active = 0;
 
 /* The number of rollback segments to use */
-ulong	srv_undo_logs = 1;
+ulong	srv_rollback_segments = 1;
+
+/* Used for the deprecated setting innodb_undo_logs. This will still get
+put into srv_rollback_segments if it is set to a non-default value. */
+ulong	srv_undo_logs = 0;
+const char* deprecated_undo_logs =
+	"The parameter innodb_undo_logs is deprecated"
+	" and may be removed in future releases."
+	" Please use innodb_rollback_segments instead."
+	" See " REFMAN "innodb-undo-logs.html";
+
 
 /** Rate at which UNDO records should be purged. */
 ulong	srv_purge_rseg_truncate_frequency = 128;
@@ -173,7 +187,6 @@ OS (provided we compiled Innobase with it in), otherwise we will
 use simulated aio we build below with threads.
 Currently we support native aio on windows and linux */
 my_bool	srv_use_native_aio = TRUE;
-my_bool	srv_numa_interleave = FALSE;
 
 #ifdef UNIV_DEBUG
 /** Force all user tables to use page compression. */
@@ -237,7 +250,7 @@ const ulint	srv_buf_pool_min_size	= 5 * 1024 * 1024;
 const ulint	srv_buf_pool_def_size	= 128 * 1024 * 1024;
 /** Requested buffer pool chunk size. Each buffer pool instance consists
 of one or more chunks. */
-ulong	srv_buf_pool_chunk_unit;
+ulonglong	srv_buf_pool_chunk_unit;
 /** Requested number of buffer pool instances */
 ulong	srv_buf_pool_instances;
 /** Default number of buffer pool instances */
@@ -367,6 +380,7 @@ this many index pages, there are 2 ways to calculate statistics:
   table/index are not found in the innodb database */
 unsigned long long	srv_stats_transient_sample_pages = 8;
 my_bool		srv_stats_persistent = TRUE;
+my_bool		srv_stats_include_delete_marked = FALSE;
 unsigned long long	srv_stats_persistent_sample_pages = 20;
 my_bool		srv_stats_auto_recalc = TRUE;
 
@@ -1535,7 +1549,7 @@ extern "C"
 os_thread_ret_t
 DECLARE_THREAD(srv_monitor_thread)(
 /*===============================*/
-	void*	arg __attribute__((unused)))
+	void*	arg MY_ATTRIBUTE((unused)))
 			/*!< in: a dummy parameter required by
 			os_thread_create */
 {
@@ -1649,7 +1663,7 @@ extern "C"
 os_thread_ret_t
 DECLARE_THREAD(srv_error_monitor_thread)(
 /*=====================================*/
-	void*	arg __attribute__((unused)))
+	void*	arg MY_ATTRIBUTE((unused)))
 			/*!< in: a dummy parameter required by
 			os_thread_create */
 {
@@ -2115,7 +2129,7 @@ srv_master_do_active_tasks(void)
 	/* Do an ibuf merge */
 	srv_main_thread_op_info = "doing insert buffer merge";
 	counter_time = ut_time_us(NULL);
-	ibuf_merge_in_background(false, ULINT_UNDEFINED);
+	ibuf_merge_in_background(false);
 	MONITOR_INC_TIME_IN_MICRO_SECS(
 		MONITOR_SRV_IBUF_MERGE_MICROSECOND, counter_time);
 
@@ -2204,7 +2218,7 @@ srv_master_do_idle_tasks(void)
 	/* Do an ibuf merge */
 	counter_time = ut_time_us(NULL);
 	srv_main_thread_op_info = "doing insert buffer merge";
-	ibuf_merge_in_background(true, ULINT_UNDEFINED);
+	ibuf_merge_in_background(true);
 	MONITOR_INC_TIME_IN_MICRO_SECS(
 		MONITOR_SRV_IBUF_MERGE_MICROSECOND, counter_time);
 
@@ -2284,7 +2298,7 @@ srv_master_do_shutdown_tasks(
 
 	/* Do an ibuf merge */
 	srv_main_thread_op_info = "doing insert buffer merge";
-	n_bytes_merged = ibuf_merge_in_background(true, ULINT_UNDEFINED);
+	n_bytes_merged = ibuf_merge_in_background(true);
 
 	/* Flush logs if needed */
 	srv_sync_log_buffer_in_background();
@@ -2324,7 +2338,7 @@ extern "C"
 os_thread_ret_t
 DECLARE_THREAD(srv_master_thread)(
 /*==============================*/
-	void*	arg __attribute__((unused)))
+	void*	arg MY_ATTRIBUTE((unused)))
 			/*!< in: a dummy parameter required by
 			os_thread_create */
 {
@@ -2471,7 +2485,7 @@ extern "C"
 os_thread_ret_t
 DECLARE_THREAD(srv_worker_thread)(
 /*==============================*/
-	void*	arg __attribute__((unused)))	/*!< in: a dummy parameter
+	void*	arg MY_ATTRIBUTE((unused)))	/*!< in: a dummy parameter
 						required by os_thread_create */
 {
 	srv_slot_t*	slot;
@@ -2479,7 +2493,7 @@ DECLARE_THREAD(srv_worker_thread)(
 	ut_ad(!srv_read_only_mode);
 	ut_a(srv_force_recovery < SRV_FORCE_NO_BACKGROUND);
 	my_thread_init();
-	THD *thd= create_thd(false, true, true, srv_worker_thread_key);
+	THD *thd= create_thd(false, true, true, srv_worker_thread_key.m_value);
 
 #ifdef UNIV_DEBUG_THREAD_CREATION
 	ib::info() << "Worker thread starting, id "
@@ -2738,11 +2752,11 @@ extern "C"
 os_thread_ret_t
 DECLARE_THREAD(srv_purge_coordinator_thread)(
 /*=========================================*/
-	void*	arg __attribute__((unused)))	/*!< in: a dummy parameter
+	void*	arg MY_ATTRIBUTE((unused)))	/*!< in: a dummy parameter
 						required by os_thread_create */
 {
 	my_thread_init();
-	THD *thd= create_thd(false, true, true, srv_purge_thread_key);
+	THD *thd= create_thd(false, true, true, srv_purge_thread_key.m_value);
 	srv_slot_t*	slot;
 	ulint           n_total_purged = ULINT_UNDEFINED;
 
@@ -2973,4 +2987,20 @@ srv_fatal_error()
 	srv_shutdown_all_bg_threads();
 
 	exit(3);
+}
+
+/** Check whether given space id is undo tablespace id
+@param[in]	space_id	space id to check
+@return true if it is undo tablespace else false. */
+bool
+srv_is_undo_tablespace(
+	ulint	space_id)
+{
+	if (srv_undo_space_id_start == 0) {
+		return(false);
+	}
+
+	return(space_id >= srv_undo_space_id_start
+	       && space_id < (srv_undo_space_id_start
+			      + srv_undo_tablespaces_open));
 }

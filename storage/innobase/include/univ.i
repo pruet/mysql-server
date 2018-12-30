@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1994, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1994, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, Google Inc.
 
 Portions of this file contain modifications contributed and copyrighted by
@@ -122,30 +122,20 @@ instrumentation in each of five InnoDB modules if
 HAVE_PSI_INTERFACE is defined. */
 #if defined(HAVE_PSI_INTERFACE) && !defined(UNIV_HOTBACKUP)
 # define UNIV_PFS_MUTEX
+
+#ifdef UNIV_PFS_MUTEX
+/* For the rwlocks to be tracked UNIV_PFS_MUTEX has to be defined. If not
+defined, the rwlocks are simply not tracked. */
 # define UNIV_PFS_RWLOCK
-/* For I/O instrumentation, performance schema rely
-on a native descriptor to identify the file, this
-descriptor could conflict with our OS level descriptor.
-Disable IO instrumentation on Windows until this is
-resolved */
-# ifndef _WIN32
+#endif /* UNIV_PFS_MUTEX */
+
 #  define UNIV_PFS_IO
-# endif
 # define UNIV_PFS_THREAD
 
 # include "mysql/psi/psi.h" /* HAVE_PSI_MEMORY_INTERFACE */
 # ifdef HAVE_PSI_MEMORY_INTERFACE
 #  define UNIV_PFS_MEMORY
 # endif /* HAVE_PSI_MEMORY_INTERFACE */
-
-/* There are mutexes/rwlocks that we want to exclude from
-instrumentation even if their corresponding performance schema
-define is set. And this PFS_NOT_INSTRUMENTED is used
-as the key value to identify those objects that would
-be excluded from instrumentation. */
-# define PFS_NOT_INSTRUMENTED		ULINT32_UNDEFINED
-
-# define PFS_IS_INSTRUMENTED(key)	((key) != PFS_NOT_INSTRUMENTED)
 
 /* For PSI_MUTEX_CALL() and similar. */
 #include "pfs_thread_provider.h"
@@ -252,7 +242,7 @@ appears close together improving code locality of non-cold parts of
 program.  The paths leading to call of cold functions within code are
 marked as unlikely by the branch prediction mechanism.  optimize a
 rarely invoked function for size instead for speed. */
-# define UNIV_COLD __attribute__((cold))
+# define UNIV_COLD MY_ATTRIBUTE((cold))
 #else
 # define UNIV_COLD /* empty */
 #endif
@@ -511,7 +501,7 @@ contains the sum of the following flag and the locally stored len. */
 
 #if defined(__GNUC__)
 /* Tell the compiler that variable/function is unused. */
-# define UNIV_UNUSED    __attribute__ ((unused))
+# define UNIV_UNUSED    MY_ATTRIBUTE ((unused))
 #else
 # define UNIV_UNUSED
 #endif /* CHECK FOR GCC VER_GT_2 */

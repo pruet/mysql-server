@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2001, 2015, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2001, 2017, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -228,7 +228,7 @@ static int rebuild_table(string name)
 {
   int rc= 0;
   string query= "ALTER TABLE " + name + " FORCE";
-  if (mysql_real_query(sock, query.c_str(), (uint)query.length()))
+  if (mysql_real_query(sock, query.c_str(), (ulong)query.length()))
   {
     fprintf(stderr, "Failed to %s\n", query.c_str());
     fprintf(stderr, "Error: %s\n", mysql_error(sock));
@@ -315,7 +315,7 @@ static int handle_request_for_tables(string tables)
 
   string query= operation + " TABLE " + tables + " " + options;
 
-  if (mysql_real_query(sock, query.c_str(), query.length()))
+  if (mysql_real_query(sock, query.c_str(), (ulong)query.length()))
   {
     DBError(sock,
       "when executing '" + operation + " TABLE ... " + options + "'");
@@ -384,6 +384,7 @@ static void print_result()
       {
         const char *alter_txt= strstr(row[3], "ALTER TABLE");
         found_error= 1;
+
         if (alter_txt)
         {
           table_rebuild= 1;
@@ -394,7 +395,8 @@ static void print_result()
             if (strstr(alter_txt, "PARTITION BY") &&
                 strlen(alter_txt) < MAX_ALTER_STR_SIZE)
             {
-              strcpy(prev_alter, alter_txt);
+              strncpy(prev_alter, alter_txt, MAX_ALTER_STR_SIZE-1);
+              prev_alter[MAX_ALTER_STR_SIZE-1]= 0;
             }
             else
             {
@@ -415,10 +417,29 @@ static void print_result()
             strcpy(prev_alter, alter_txt);
           }
         }
+	else
+        {
+          /*
+            Search the error message specific to pre 5.0 decimal type.
+            "REPAIR TABLE" should not be present in the error message and
+            "dump/reload" should be present in the error message. In this
+            case, do not add table to the repair list.
+          */
+          const char *repair_txt= strstr(row[3], "REPAIR TABLE");
+          const char *dump_txt= strstr(row[3], "dump/reload table");
+          if (dump_txt && !repair_txt)
+          {
+            found_error= 0;
+            table_rebuild= 0;
+            prev_alter[0]= '\0';
+            failed_tables.push_back(row[0]);
+          }
+        }
       }
     }
     else
       printf("%-9s: %s", row[2], row[3]);
+
     my_stpcpy(prev, row[0]);
     putchar('\n');
   }

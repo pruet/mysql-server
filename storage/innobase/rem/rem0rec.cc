@@ -242,7 +242,7 @@ rec_get_n_extern_new(
 Determine the offset to each field in a leaf-page record
 in ROW_FORMAT=COMPACT.  This is a special case of
 rec_init_offsets() and rec_get_offsets_func(). */
-UNIV_INLINE __attribute__((nonnull))
+UNIV_INLINE MY_ATTRIBUTE((nonnull))
 void
 rec_init_offsets_comp_ordinary(
 /*===========================*/
@@ -784,7 +784,7 @@ rec_get_nth_field_offs_old(
 /**********************************************************//**
 Determines the size of a data tuple prefix in ROW_FORMAT=COMPACT.
 @return total size */
-UNIV_INLINE __attribute__((warn_unused_result, nonnull(1,2)))
+UNIV_INLINE MY_ATTRIBUTE((warn_unused_result, nonnull(1,2)))
 ulint
 rec_get_converted_size_comp_prefix_low(
 /*===================================*/
@@ -1657,6 +1657,7 @@ rec_copy_prefix_to_buf(
 	ulint		prefix_len;
 	ulint		null_mask;
 	ulint		status;
+	bool		is_rtr_node_ptr = false;
 
 	UNIV_PREFETCH_RW(*buf);
 
@@ -1678,6 +1679,7 @@ rec_copy_prefix_to_buf(
 		/* For R-tree, we need to copy the child page number field. */
 		if (dict_index_is_spatial(index)) {
 			ut_ad(n_fields == DICT_INDEX_SPATIAL_NODEPTR_SIZE + 1);
+			is_rtr_node_ptr = true;
 		} else {
 			/* it doesn't make sense to copy the child page number
 			field */
@@ -1722,7 +1724,11 @@ rec_copy_prefix_to_buf(
 			null_mask <<= 1;
 		}
 
-		if (field->fixed_len) {
+		if (is_rtr_node_ptr && i == 1) {
+			/* For rtree node ptr rec, we need to
+			copy the page no field with 4 bytes len. */
+			prefix_len += 4;
+		} else if (field->fixed_len) {
 			prefix_len += field->fixed_len;
 		} else {
 			ulint	len = *lens--;

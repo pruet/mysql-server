@@ -1,4 +1,4 @@
-/* Copyright (c) 2001, 2014, Oracle and/or its affiliates. All rights reserved.
+/* Copyright (c) 2001, 2016, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,10 +21,9 @@
 C_MODE_START
 
 /*
-  HAVE_BACKTRACE - Linux
+  HAVE_BACKTRACE - Linux, FreeBSD, OSX
   HAVE_PRINTSTACK - Solaris
   _WIN32 - Windows
-  Missing: FreeBSD
 */
 #if defined(HAVE_BACKTRACE) || defined(HAVE_PRINTSTACK) || defined(_WIN32)
 #define HAVE_STACKTRACE 1
@@ -84,7 +83,7 @@ char *my_safe_utoa(int base, ulonglong val, char *buf);
   Implemented with simplicity, and async-signal-safety in mind.
 */
 size_t my_safe_snprintf(char* to, size_t n, const char* fmt, ...)
-  __attribute__((format(printf, 3, 4)));
+  MY_ATTRIBUTE((format(printf, 3, 4)));
 
 /**
   A (very) limited version of snprintf, which writes the result to STDERR.
@@ -94,7 +93,7 @@ size_t my_safe_snprintf(char* to, size_t n, const char* fmt, ...)
   which should suffice for our signal handling routines.
 */
 size_t my_safe_printf_stderr(const char* fmt, ...)
-  __attribute__((format(printf, 1, 2)));
+  MY_ATTRIBUTE((format(printf, 1, 2)));
 
 /**
   Writes up to count bytes from buffer to STDERR.

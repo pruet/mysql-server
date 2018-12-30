@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2000, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2000, 2018, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -22,14 +22,21 @@ this program; if not, write to the Free Software Foundation, Inc.,
 system clustered index when there is no primary key. */
 extern const char innobase_index_reserve_name[];
 
+/* Deprecation warning text */
+extern const char PARTITION_IN_SHARED_TABLESPACE_WARNING[];
+
 /* "innodb_file_per_table" tablespace name  is reserved by InnoDB in order
 to explicitly create a file_per_table tablespace for the table. */
 extern const char reserved_file_per_table_space_name[];
 
-/* "innodb_system" tablespace name is reserved by InnoDB for the system tablespace
-which uses space_id 0 and stores extra types of system pages like UNDO
-and doublewrite. */
+/* "innodb_system" tablespace name is reserved by InnoDB for the
+system tablespace which uses space_id 0 and stores extra types of
+system pages like UNDO and doublewrite. */
 extern const char reserved_system_space_name[];
+
+/* "innodb_temporary" tablespace name is reserved by InnoDB for the
+predefined shared temporary tablespace. */
+extern const char reserved_temporary_space_name[];
 
 /* Structure defines translation table between mysql index and InnoDB
 index structures */
@@ -87,7 +94,7 @@ public:
 
 	uint max_supported_key_length() const;
 
-	uint max_supported_key_part_length() const;
+	uint max_supported_key_part_length(HA_CREATE_INFO *create_info) const;
 
 	const key_map* keys_to_use_for_scanning();
 
@@ -198,8 +205,10 @@ public:
 
 	void position(uchar *record);
 
+#ifdef WL6742
+	/* Removing WL6742 as part of Bug #23046302 */
 	virtual int records(ha_rows* num_rows);
-
+#endif
 	ha_rows records_in_range(
 		uint			inx,
 		key_range*		min_key,
@@ -614,7 +623,7 @@ innobase_index_name_is_reserved(
 						created */
 	ulint			num_of_keys)	/*!< in: Number of indexes to
 						be created. */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 extern const char reserved_file_per_table_space_name[];
 
@@ -631,18 +640,49 @@ tablespace_is_file_per_table(
 			       reserved_file_per_table_space_name)));
 }
 
-/** Check if table will be put in an existing shared general tablespace.
+/** Check if table will be explicitly put in an existing shared general
+or system tablespace.
 @param[in]	create_info	Metadata for the table to create.
-@return true if the table will use an existing shared general tablespace. */
+@return true if the table will use a shared general or system tablespace. */
 UNIV_INLINE
 bool
 tablespace_is_shared_space(
-	const HA_CREATE_INFO*	create_info)
+const HA_CREATE_INFO*	create_info)
 {
 	return(create_info->tablespace != NULL
-	       && create_info->tablespace[0] != '\0'
-	       && (0 != strcmp(create_info->tablespace,
-			       reserved_file_per_table_space_name)));
+		&& create_info->tablespace[0] != '\0'
+		&& (0 != strcmp(create_info->tablespace,
+		reserved_file_per_table_space_name)));
+}
+
+/** Check if table will be explicitly put in a general tablespace.
+@param[in]	create_info	Metadata for the table to create.
+@return true if the table will use a general tablespace. */
+UNIV_INLINE
+bool
+tablespace_is_general_space(
+const HA_CREATE_INFO*	create_info)
+{
+	return(create_info->tablespace != NULL
+		&& create_info->tablespace[0] != '\0'
+		&& (0 != strcmp(create_info->tablespace,
+				reserved_file_per_table_space_name))
+		&& (0 != strcmp(create_info->tablespace,
+				reserved_temporary_space_name))
+		&& (0 != strcmp(create_info->tablespace,
+				reserved_system_space_name)));
+}
+
+/** Check if tablespace is shared tablespace.
+@param[in]      tablespace_name Name of the tablespace
+@return true if tablespace is a shared tablespace. */
+UNIV_INLINE
+bool is_shared_tablespace(const char *tablespace_name) {
+  if (tablespace_name != NULL && tablespace_name[0] != '\0' &&
+      (strcmp(tablespace_name, reserved_file_per_table_space_name) != 0)) {
+    return true;
+  }
+  return false;
 }
 
 /** Parse hint for table and its indexes, and update the information
@@ -710,8 +750,11 @@ public:
 	/** Validate TABLESPACE option. */
 	bool create_option_tablespace_is_valid();
 
+	/** Validate COMPRESSION option. */
+	bool create_option_compression_is_valid();
+
 	/** Prepare to create a table. */
-	int prepare_create_table(const char*		name);
+	int prepare_create_table(const char* name);
 
 	void allocate_trx();
 
@@ -860,7 +903,7 @@ innobase_fts_load_stopword(
 	dict_table_t*	table,		/*!< in: Table has the FTS */
 	trx_t*		trx,		/*!< in: transaction */
 	THD*		thd)		/*!< in: current thread */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Some defines for innobase_fts_check_doc_id_index() return value */
 enum fts_doc_id_index_enum {
@@ -880,7 +923,7 @@ innobase_fts_check_doc_id_index(
 						that is being altered */
 	ulint*			fts_doc_col_no)	/*!< out: The column number for
 						Doc ID */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /**
 Check whether the table has a unique index with FTS_DOC_ID_INDEX_NAME
@@ -891,7 +934,7 @@ fts_doc_id_index_enum
 innobase_fts_check_doc_id_index_in_def(
 	ulint		n_key,		/*!< in: Number of keys */
 	const KEY*	key_info)	/*!< in: Key definitions */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /**
 @return version of the extended FTS API */
@@ -946,6 +989,19 @@ innodb_base_col_setup(
 	dict_table_t*	table,
 	const Field*	field,
 	dict_v_col_t*	v_col);
+
+/** Set up base columns for stored column
+@param[in]	table	InnoDB table
+@param[in]	field	MySQL field
+@param[in,out]	s_col	stored column */
+void
+innodb_base_col_setup_for_stored(
+	const dict_table_t*	table,
+	const Field*		field,
+	dict_s_col_t*		s_col);
+
+/** whether this ia stored column */
+#define innobase_is_s_fld(field) ((field)->gcol_info && (field)->stored_in_db)
 
 /** whether this is a computed virtual column */
 #define innobase_is_v_fld(field) ((field)->gcol_info && !(field)->stored_in_db)
@@ -1047,8 +1103,3 @@ innobase_build_v_templ_callback(
 the table virtual columns' template */
 typedef void (*my_gcolumn_templatecallback_t)(const TABLE*, void*);
 
-/** Get the computed value by supplying the base column values.
-@param[in,out]  table   the table whose virtual column template to be built */
-void
-innobase_init_vc_templ(
-        dict_table_t*   table);

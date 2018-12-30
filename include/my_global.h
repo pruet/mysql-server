@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2001, 2015, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2001, 2016, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -159,7 +159,7 @@ static inline void sleep(unsigned long seconds)
 #define compile_time_assert(X)                                              \
   do                                                                        \
   {                                                                         \
-    typedef char compile_time_assert[(X) ? 1 : -1] __attribute__((unused)); \
+    typedef char compile_time_assert[(X) ? 1 : -1] MY_ATTRIBUTE((unused)); \
   } while(0)
 
 #define QUOTE_ARG(x)		#x	/* Quote argument (before cpp) */
@@ -281,12 +281,23 @@ typedef socket_len_t SOCKET_SIZE_TYPE; /* Used by NDB */
 #define FN_NETWORK_DRIVES	/* Uses \\ to indicate network drives */
 #else
 #define FN_LIBCHAR	'/'
-#define FN_LIBCHAR2	'/'
+/*
+  FN_LIBCHAR2 is not defined on !Windows. Use is_directory_separator().
+*/
 #define FN_DIRSEP       "/"     /* Valid directory separators */
 #define FN_EXEEXT   ""
 #define FN_SOEXT    ".so"
 #define FN_ROOTDIR	"/"
 #endif
+
+static inline int is_directory_separator(char c)
+{
+#ifdef _WIN32
+  return c == FN_LIBCHAR || c == FN_LIBCHAR2;
+#else
+  return c == FN_LIBCHAR;
+#endif
+}
 
 /* 
   MY_FILE_MIN is  Windows speciality and is used to quickly detect

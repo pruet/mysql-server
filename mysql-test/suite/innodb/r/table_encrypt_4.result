@@ -3,6 +3,7 @@ SET GLOBAL innodb_file_per_table = 1;
 SELECT @@innodb_file_per_table;
 @@innodb_file_per_table
 1
+# Create a table with encryption
 CREATE TABLE t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
 SHOW CREATE TABLE t1;
 Table	Create Table
@@ -38,6 +39,7 @@ c1	c2
 7	hhhhh
 8	iiiii
 9	jjjjj
+# Test export/import encrypted tablespace.
 FLUSH TABLES test.t1 FOR EXPORT;
 UNLOCK TABLES;
 ALTER TABLE test.t1 DISCARD TABLESPACE;
@@ -63,6 +65,21 @@ c1	c2
 7	hhhhh
 8	iiiii
 9	jjjjj
+SELECT * FROM test.t1 LIMIT 10;
+c1	c2
+0	aaaaa
+1	bbbbb
+2	ccccc
+3	ddddd
+4	eeeee
+5	fffff
+6	ggggg
+7	hhhhh
+8	iiiii
+9	jjjjj
+ALTER TABLE test.t1 DISCARD TABLESPACE;
+# Try import in another session.
+ALTER TABLE test.t1 IMPORT TABLESPACE;
 SELECT * FROM test.t1 LIMIT 10;
 c1	c2
 0	aaaaa
@@ -123,5 +140,12 @@ CREATE TABLE test.t1(c1 INT, c2 char(20)) ENGINE = InnoDB;
 ALTER TABLE test.t1 DISCARD TABLESPACE;
 ALTER TABLE test.t1 IMPORT TABLESPACE;
 ERROR HY000: Schema mismatch (Encryption attribute is no matched)
+# Import got expected error.
+DROP TABLE t1;
+CREATE TABLE test.t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
+ALTER TABLE test.t1 DISCARD TABLESPACE;
+SET SESSION DEBUG="+d, fsp_header_rotate_encryption_failure";
+ALTER TABLE test.t1 IMPORT TABLESPACE;
+ERROR HY000: Got error 168 from storage engine
 Warnings:
 Note	1051	Unknown table 'test.t1'

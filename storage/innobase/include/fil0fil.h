@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -250,7 +250,7 @@ struct fil_node_t {
 	/** whether this file is open */
 	bool		is_open;
 	/** file handle (valid if is_open) */
-	os_file_t	handle;
+	pfs_os_file_t	handle;
 	/** event that groups and serializes calls to fsync */
 	os_event_t	sync_event;
 	/** whether the file actually is a raw device or disk partition */
@@ -584,7 +584,7 @@ should be used instead.
 fil_space_t*
 fil_space_get(
 	ulint	id)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 #ifndef UNIV_HOTBACKUP
 /** Returns the latch of a file space.
 @param[in]	id	space id
@@ -620,7 +620,7 @@ fil_space_set_imported(
 @return whether it is a temporary tablespace */
 bool
 fsp_is_temporary(ulint id)
-__attribute__((warn_unused_result, pure));
+MY_ATTRIBUTE((warn_unused_result, pure));
 # endif /* UNIV_DEBUG */
 #endif /* !UNIV_HOTBACKUP */
 
@@ -642,7 +642,7 @@ fil_node_create(
 	bool		is_raw,
 	bool		atomic_write,
 	ulint		max_pages = ULINT_MAX)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Create a space memory object and put it to the fil_system hash table.
 The tablespace name is independent from the tablespace file-name.
@@ -659,7 +659,7 @@ fil_space_create(
 	ulint		id,
 	ulint		flags,
 	fil_type_t	purpose)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*******************************************************************//**
 Assigns a new space id for a new single-table tablespace. This works simply by
@@ -797,7 +797,7 @@ for concurrency control.
 fil_space_t*
 fil_space_acquire(
 	ulint	id)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Acquire a tablespace that may not exist.
 Used by background threads that do not necessarily hold proper locks
@@ -807,7 +807,7 @@ for concurrency control.
 fil_space_t*
 fil_space_acquire_silent(
 	ulint	id)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Release a tablespace acquired with fil_space_acquire().
 @param[in,out]	space	tablespace to release  */
@@ -920,7 +920,7 @@ fil_op_replay_rename(
 	ulint		first_page_no,
 	const char*	name,
 	const char*	new_name)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Deletes an IBD tablespace, either general or single-table.
 The tablespace must be cached in the memory cache. This will delete the
@@ -953,14 +953,18 @@ dberr_t
 fil_prepare_for_truncate(
 /*=====================*/
 	ulint	id);			/*!< in: space id */
-/**********************************************************************//**
-Reinitialize the original tablespace header with the same space id
-for single tablespace */
+
+/** Reinitialize the original tablespace header with the same space id
+for single tablespace
+@param[in]	table		table belongs to the tablespace
+@param[in]	size            size in blocks
+@param[in]	trx		Transaction covering truncate */
 void
-fil_reinit_space_header(
-/*====================*/
-	ulint		id,	/*!< in: space id */
-	ulint		size);	/*!< in: size in blocks */
+fil_reinit_space_header_for_table(
+	dict_table_t*	table,
+	ulint		size,
+	trx_t*		trx);
+
 /*******************************************************************//**
 Closes a single-table tablespace. The tablespace must be cached in the
 memory cache. Free all pages used by the tablespace.
@@ -989,7 +993,7 @@ dberr_t
 fil_discard_tablespace(
 /*===================*/
 	ulint	id)	/*!< in: space id */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 #endif /* !UNIV_HOTBACKUP */
 
 /** Test if a tablespace file can be renamed to a new filepath by checking
@@ -1052,7 +1056,7 @@ fil_ibd_create(
 	const char*	path,
 	ulint		flags,
 	ulint		size)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 /********************************************************************//**
 Tries to open a single-table tablespace and optionally checks the space id is
 right in it. If does not succeed, prints an error message to the .err log. This
@@ -1091,7 +1095,7 @@ fil_ibd_open(
 	ulint		flags,
 	const char*	tablename,
 	const char*	path_in)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 enum fil_load_status {
 	/** The tablespace file(s) were found and valid. */
@@ -1114,7 +1118,7 @@ fil_ibd_load(
 	ulint		space_id,
 	const char*	filename,
 	fil_space_t*&	space)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /***********************************************************************//**
 A fault-tolerant function that tries to read the next file name in the
@@ -1398,14 +1402,14 @@ struct PageCallback {
 	@param block block read from file, note it is not from the buffer pool
 	@retval DB_SUCCESS or error code. */
 	virtual dberr_t operator()(
-		os_offset_t 	offset,
+		os_offset_t	offset,
 		buf_block_t*	block) UNIV_NOTHROW = 0;
 
 	/** Set the name of the physical file and the file handle that is used
 	to open it for the file that is being iterated over.
 	@param filename then physical name of the tablespace file.
 	@param file OS file handle */
-	void set_file(const char* filename, os_file_t file) UNIV_NOTHROW
+	void set_file(const char* filename, pfs_os_file_t file) UNIV_NOTHROW
 	{
 		m_file = file;
 		m_filepath = filename;
@@ -1434,7 +1438,7 @@ struct PageCallback {
 	page_size_t		m_page_size;
 
 	/** File handle to the tablespace */
-	os_file_t		m_file;
+	pfs_os_file_t		m_file;
 
 	/** Physical file path. */
 	const char*		m_filepath;
@@ -1457,7 +1461,7 @@ fil_tablespace_iterate(
 	dict_table_t*		table,
 	ulint			n_io_buffers,
 	PageCallback&		callback)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /********************************************************************//**
 Looks for a pre-existing fil_space_t with the given tablespace ID
@@ -1498,7 +1502,7 @@ fil_get_space_names(
 /*================*/
 	space_name_list_t&	space_name_list)
 				/*!< in/out: Vector for collecting the names. */
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Return the next fil_node_t in the current or next fil_space_t.
 Once started, the caller must keep calling this until it returns NULL.
@@ -1524,7 +1528,7 @@ fil_mtr_rename_log(
 	const dict_table_t*	new_table,
 	const char*		tmp_name,
 	mtr_t*			mtr)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Note that a non-predefined persistent tablespace has been modified
 by redo log.
@@ -1543,23 +1547,23 @@ fil_names_dirty_and_write(
 	fil_space_t*	space,
 	mtr_t*		mtr);
 
-/** Set the compression type for the tablespace
-@param[in] space		Space ID of tablespace for which to set
-@param[in] algorithm		Text representation of the algorithm
+/** Set the compression type for the tablespace of a table
+@param[in]	table		Table that should be compressesed
+@param[in]	algorithm	Text representation of the algorithm
 @return DB_SUCCESS or error code */
 dberr_t
 fil_set_compression(
-	ulint		space_id,
+	dict_table_t*	table,
 	const char*	algorithm)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
-/**
-@param[in]      space_id        Space ID to check
+/** Get the compression type for the tablespace
+@param[in]	space_id	Space ID to check
 @return the compression algorithm */
 Compression::Type
 fil_get_compression(
-        ulint           space_id)
-	__attribute__((warn_unused_result));
+	ulint		space_id)
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Set the encryption type for the tablespace
 @param[in] space		Space ID of tablespace for which to set
@@ -1573,7 +1577,7 @@ fil_set_encryption(
 	Encryption::Type	algorithm,
 	byte*			key,
 	byte*			iv)
-	__attribute__((warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /**
 @return true if the re-encrypt success */
@@ -1585,7 +1589,7 @@ for the first time since the latest fil_names_clear().
 @param[in,out]	space	tablespace
 @param[in,out]	mtr	mini-transaction
 @return whether any MLOG_FILE_NAME record was written */
-inline __attribute__((warn_unused_result))
+inline MY_ATTRIBUTE((warn_unused_result))
 bool
 fil_names_write_if_was_clean(
 	fil_space_t*	space,
@@ -1651,7 +1655,7 @@ Try and enable FusionIO atomic writes.
 @param[in] file		OS file handle
 @return true if successful */
 bool
-fil_fusionio_enable_atomic_write(os_file_t file);
+fil_fusionio_enable_atomic_write(pfs_os_file_t file);
 #endif /* !NO_FALLOCATE && UNIV_LINUX */
 
 /** Note that the file system where the file resides doesn't support PUNCH HOLE

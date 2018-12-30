@@ -1,4 +1,4 @@
-# Copyright (c) 2006, 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2006, 2018, Oracle and/or its affiliates. All rights reserved.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,8 +20,7 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/sql
   ${CMAKE_SOURCE_DIR}/strings
   ${SSL_INCLUDE_DIRS}
-  ${SSL_INTERNAL_INCLUDE_DIRS}
-  ${ZLIB_INCLUDE_DIR})
+  ${SSL_INTERNAL_INCLUDE_DIRS})
 ADD_DEFINITIONS(${SSL_DEFINES})
 
 SET(CLIENT_API_FUNCTIONS
@@ -146,32 +145,49 @@ CACHE INTERNAL "Functions exported by client API"
 
 )
 
-# Below list will have all the undocumented C API symbols but still exported.
+# Below lists will have all the undocumented C API symbols but still exported.
 # Once the decision is taken to have documentation we need to move them to
 # CLIENT_API_FUNCTIONS list.
-SET(CLIENT_API_FUNCTIONS_UNDOCUMENTED
+SET(CLIENT_API_FUNCTIONS_UNDOCUMENTED_20_0
 get_tty_password
 # my_load_defaults is a wrapper for load_defaults and it is not documented. We
 # will have a FR to replace this for decent name/functionality and document it.
 my_load_defaults
 handle_options
 
-CACHE INTERNAL "Undocumented Functions exported by client API"
+CACHE INTERNAL "Undocumented functions exported by client API in version 20.0"
 
 )
 
+SET(CLIENT_API_FUNCTIONS_UNDOCUMENTED_20_3
+  # pure-ftpd 1.0.42 needs either my_make_scrambled_password (preferred)
+  # or make_scrambled_password.
+  my_make_scrambled_password
+
+  CACHE INTERNAL "Undocumented functions exported by client API in version 20.3"
+
+)
+
+SET(CLIENT_API_FUNCTIONS_UNDOCUMENTED
+  ${CLIENT_API_FUNCTIONS_UNDOCUMENTED_20_0}
+  ${CLIENT_API_FUNCTIONS_UNDOCUMENTED_20_3}
+
+  CACHE INTERNAL "Undocumented functions exported by client API"
+
+)
 
 SET(CLIENT_SOURCES
-  get_password.c 
   libmysql.c
   errmsg.c
   ../sql-common/client.c 
   ../sql-common/my_time.c 
   ../sql-common/client_plugin.c 
   ../sql-common/client_authentication.cc
+  ../sql-common/get_password.c
   ../sql/net_serv.cc
   ../sql-common/pack.c 
   ../sql/auth/password.c
+  ../sql/auth/sha2_password_common.cc
 )
 
 IF (WIN32 AND OPENSSL_APPLINK_C)
@@ -214,20 +230,31 @@ IF(WIN32)
   LIST(APPEND LIBS auth_win_client)
 ENDIF()
 
+# LDAP authentication SASL client plugin
+MESSAGE(STATUS "Creating LDAP authentication SASL client library.")
+ADD_SUBDIRECTORY(authentication_ldap)
+  
 # Merge several convenience libraries into one big mysqlclient
-MERGE_LIBRARIES(mysqlclient STATIC ${LIBS} COMPONENT Development)
+MERGE_CONVENIENCE_LIBRARIES(mysqlclient ${LIBS} COMPONENT Development)
 
 # Visual Studio users need debug  static library for debug projects
 IF(MSVC)
- INSTALL_DEBUG_TARGET(mysqlclient DESTINATION ${INSTALL_LIBDIR}/debug)
- INSTALL_DEBUG_TARGET(clientlib DESTINATION ${INSTALL_LIBDIR}/debug)
-ENDIF()
+  INSTALL_DEBUG_TARGET(mysqlclient DESTINATION ${INSTALL_LIBDIR}/debug)
 
-MACRO(GET_TARGET_NAME target out_name)
-  GET_TARGET_PROPERTY(location ${target} LOCATION)
-  GET_FILENAME_COMPONENT(name ${location} NAME)
-  SET(${out_name} ${name})
-ENDMACRO()
+  INSTALL_DEBUG_TARGET(auth_win_client DESTINATION ${INSTALL_LIBDIR}/debug)
+  INSTALL_DEBUG_TARGET(clientlib DESTINATION ${INSTALL_LIBDIR}/debug)
+  INSTALL_DEBUG_TARGET(mysys DESTINATION ${INSTALL_LIBDIR}/debug)
+  INSTALL_DEBUG_TARGET(mysys_ssl DESTINATION ${INSTALL_LIBDIR}/debug)
+  INSTALL_DEBUG_TARGET(strings DESTINATION ${INSTALL_LIBDIR}/debug)
+  INSTALL_DEBUG_TARGET(vio DESTINATION ${INSTALL_LIBDIR}/debug)
+  IF(WITH_SSL STREQUAL "bundled")
+    INSTALL_DEBUG_TARGET(taocrypt DESTINATION ${INSTALL_LIBDIR}/debug)
+    INSTALL_DEBUG_TARGET(yassl DESTINATION ${INSTALL_LIBDIR}/debug)
+  ENDIF()
+  IF(WITH_ZLIB STREQUAL "bundled")
+    INSTALL_DEBUG_TARGET(zlib DESTINATION ${INSTALL_LIBDIR}/debug)
+  ENDIF()
+ENDIF()
 
 IF(UNIX)
   MACRO(GET_VERSIONED_LIBNAME LIBNAME EXTENSION VERSION OUTNAME)
@@ -243,7 +270,7 @@ IF(UNIX)
   ENDMACRO()
 ENDIF()
 
-# In our special "mixed" builds, also install libstlport which will
+# I we build client-only, we may be using libstlport which will
 # be injected into the build tree by the Sun Studio part of the build.
 
 IF(CMAKE_SYSTEM_NAME MATCHES "SunOS" AND DEFINED ENV{PB2WORKDIR})
@@ -255,7 +282,7 @@ ENDIF()
 IF(NOT DISABLE_SHARED)
   # Merge several convenience libraries into one big mysqlclient
   # and link them together into shared library.
-  MERGE_LIBRARIES(libmysql SHARED ${LIBS}
+  MERGE_LIBRARIES_SHARED(libmysql ${LIBS}
     EXPORTS ${CLIENT_API_FUNCTIONS} ${CLIENT_API_FUNCTIONS_UNDOCUMENTED}
     COMPONENT SharedLibraries)
   IF(UNIX)
@@ -280,7 +307,7 @@ IF(NOT DISABLE_SHARED)
     ENDIF()
 
     GET_TARGET_PROPERTY(libmysql_link_flags libmysql LINK_FLAGS)
-    IF(NOT libmysql_link_flag)
+    IF(NOT libmysql_link_flags)
       SET(libmysql_link_flags)
     ENDIF()
     SET(libmysql_link_flags
@@ -339,3 +366,9 @@ IF(DISABLE_SHARED)
 ELSE()
   TARGET_LINK_LIBRARIES(libmysql_api_test libmysql)
 ENDIF()
+
+# Verify that libmysql_api_test runs OK
+ADD_CUSTOM_COMMAND(TARGET libmysql_api_test POST_BUILD
+  COMMAND $<TARGET_FILE:libmysql_api_test>
+  > ${CMAKE_CURRENT_BINARY_DIR}/libmysql_api_test.out
+  )

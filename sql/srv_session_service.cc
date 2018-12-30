@@ -1,4 +1,4 @@
-/*  Copyright (c) 2015, Oracle and/or its affiliates. All rights reserved.
+/*  Copyright (c) 2015, 2017, Oracle and/or its affiliates. All rights reserved.
 
     This program is free software; you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
@@ -37,8 +37,7 @@ extern "C"
 {
 
 /**
-  Initializes physical thread to use with session service. The used
-  PSI key is key_thread_daemon_plugin
+  Initializes physical thread to use with session service.
 
   @return
     0  success
@@ -81,10 +80,15 @@ Srv_session* srv_session_open(srv_session_error_cb error_cb, void *plugin_ctx)
     DBUG_RETURN(NULL);
   }
 
+  bool simulate_reach_max_connections= false;
+  DBUG_EXECUTE_IF("simulate_reach_max_connections",
+                  simulate_reach_max_connections= true;);
+
   Connection_handler_manager *conn_manager=
       Connection_handler_manager::get_instance();
 
-  if (!conn_manager->check_and_incr_conn_count())
+  if (simulate_reach_max_connections ||
+      !conn_manager->check_and_incr_conn_count())
   {
     if (error_cb)
       error_cb(plugin_ctx, ER_CON_COUNT_ERROR, ER_DEFAULT(ER_CON_COUNT_ERROR));
@@ -102,11 +106,24 @@ Srv_session* srv_session_open(srv_session_error_cb error_cb, void *plugin_ctx)
   }
   else
   {
-    if (session->open())
+    THD *current= current_thd;
+    THD *stack_thd= session->get_thd();
+
+    session->get_thd()->thread_stack= reinterpret_cast<char *>(&stack_thd);
+    session->get_thd()->store_globals();
+
+    bool result= session->open();
+
+    session->get_thd()->restore_globals();
+
+    if (result)
     {
       delete session;
       session= NULL;
     }
+
+    if (current)
+      current->store_globals();
   }
   DBUG_RETURN(session);
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2015, 2016 Oracle and/or its affiliates. All rights reserved.
+  Copyright (c) 2015, 2018, Oracle and/or its affiliates. All rights reserved.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -67,7 +67,7 @@ void Program::error(const Mysql::Tools::Base::Message_data& message)
   {
     std::cerr << "Dump process encountered error and will not continue."
       << std::endl;
-    exit((int)message.get_code());
+    m_error_code.store((int)message.get_code());
   }
 }
 
@@ -128,6 +128,11 @@ int Program::get_total_connections()
      get_parallel_schemas_with_default_thread_count() * dp));
 }
 
+int Program::get_error_code()
+{
+  return m_error_code.load();
+}
+
 int Program::execute(std::vector<std::string> positional_options)
 {
   I_connection_provider* connection_provider= NULL;
@@ -145,7 +150,7 @@ int Program::execute(std::vector<std::string> positional_options)
       new Single_transaction_connection_provider(this, num_connections, message_handler)
       : new Thread_specific_connection_provider(this);
   }
-  catch (std::exception e)
+  catch (const std::exception &e)
   {
     this->error(Mysql::Tools::Base::Message_data(
       0, "Error during creating connection.",
@@ -158,6 +163,7 @@ int Program::execute(std::vector<std::string> positional_options)
   {
     std::cerr << "Server version is not compatible. Server version should "
                  "be 5.7.8 or above.";
+    delete runner;
     delete message_handler;
     delete connection_provider;
     return 0;
@@ -177,13 +183,13 @@ int Program::execute(std::vector<std::string> positional_options)
   }
   I_crawler* crawler= new Mysql_crawler(
     connection_provider, message_handler, id_generator,
-    m_mysql_chain_element_options);
+    m_mysql_chain_element_options, this);
   m_mysqldump_tool_chain_maker_options->process_positional_options(
     positional_options);
   check_mutually_exclusive_options();
   I_chain_maker* chain_maker= new Mysqldump_tool_chain_maker(
     connection_provider, message_handler, id_generator,
-    m_mysqldump_tool_chain_maker_options);
+    m_mysqldump_tool_chain_maker_options, this);
 
   crawler->register_chain_maker(chain_maker);
   if (progress_watcher != NULL)
@@ -194,17 +200,22 @@ int Program::execute(std::vector<std::string> positional_options)
 
   crawler->enumerate_objects();
 
+  delete runner;
   delete crawler;
   if (progress_watcher != NULL)
     delete progress_watcher;
   delete id_generator;
   delete connection_provider;
+  delete message_handler;
+  delete chain_maker;
 
-  std::cerr << "Dump completed in " <<
-    boost::chrono::duration_cast<boost::chrono::milliseconds>(
-    boost::chrono::high_resolution_clock::now() - start_time) << std::endl;
-
-  return 0;
+  if (!get_error_code())
+  {
+    std::cerr << "Dump completed in " <<
+      boost::chrono::duration_cast<boost::chrono::milliseconds>(
+      boost::chrono::high_resolution_clock::now() - start_time) << std::endl;
+  }
+  return get_error_code();
 }
 
 std::string Program::get_description()
@@ -241,7 +252,8 @@ void Program::short_usage()
 
 Program::Program()
   : Abstract_connection_program(),
-  m_stderr(NULL)
+  m_stderr(NULL),
+  m_error_code(0)
 {
   m_mysql_chain_element_options= new Mysql_chain_element_options(this);
   m_mysqldump_tool_chain_maker_options=
